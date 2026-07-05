@@ -1,0 +1,426 @@
+<?php
+
+namespace App\Telegram\Conversations;
+
+use App\Jobs\PollProviderActionJob;
+use App\Models\Panel;
+use App\Services\Providers\ProviderClient;
+use App\Services\Providers\ProviderException;
+use App\Services\Providers\ProviderManager;
+use App\Telegram\Support\Cancellable;
+use App\Telegram\Support\GridButtons;
+use SergiX44\Nutgram\Conversations\InlineMenu;
+use SergiX44\Nutgram\Nutgram;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
+
+class ServerListMenu extends InlineMenu
+{
+    use Cancellable;
+    use GridButtons;
+
+    protected ?int $panelId = null;
+    protected int $page = 1;
+    protected int|string|null $serverId = null;
+    protected ?string $pendingImage = null;
+
+    protected function panel(): Panel
+    {
+        return Panel::findOrFail($this->panelId);
+    }
+
+    protected function client(): ProviderClient
+    {
+        return ProviderManager::forPanel($this->panel());
+    }
+
+    /**
+     * $jumpPanelId/$jumpServerId let a "🔍 مشاهده سرور" button (sent from
+     * PollProviderActionJob) open this conversation straight on a specific
+     * server's detail screen instead of the panel picker.
+     */
+    public function start(Nutgram $bot, ?int $jumpPanelId = null, ?string $jumpServerId = null): void
+    {
+        if ($jumpPanelId !== null && $jumpServerId !== null) {
+            $this->panelId = $jumpPanelId;
+            $this->serverId = $jumpServerId;
+            $this->renderServerDetail($bot);
+            return;
+        }
+
+        $panels = Panel::query()->active()->get();
+
+        $this->clearButtons();
+
+        if ($panels->isEmpty()) {
+            $this->menuText("هیچ پنل فعالی وجود ندارد.\nابتدا از منوی «پنل‌های من» یک پنل اضافه کنید.");
+            $this->addButtonRow(InlineKeyboardButton::make('❌ بستن', callback_data: 'x@cancel'));
+            $this->showMenu();
+            return;
+        }
+
+        $this->menuText('سرورهای کدام پنل را می‌خواهید ببینید؟');
+
+        foreach ($panels as $panel) {
+            $this->addButtonRow(InlineKeyboardButton::make(
+                "{$panel->name} ({$panel->provider->label()})",
+                callback_data: "{$panel->id}@choosePanel"
+            ));
+        }
+
+        $this->addButtonRow(InlineKeyboardButton::make('❌ لغو', callback_data: 'x@cancel'));
+        $this->showMenu();
+    }
+
+    public function choosePanel(Nutgram $bot, string $data): void
+    {
+        $this->panelId = (int) $data;
+        $this->page = 1;
+        $this->renderList($bot);
+    }
+
+    public function nextPage(Nutgram $bot): void
+    {
+        $this->page++;
+        $this->renderList($bot);
+    }
+
+    public function prevPage(Nutgram $bot): void
+    {
+        $this->page = max(1, $this->page - 1);
+        $this->renderList($bot);
+    }
+
+    protected function renderList(Nutgram $bot): void
+    {
+        try {
+            $result = $this->client()->listServers($this->page, 8);
+        } catch (ProviderException $e) {
+            $this->closeMenu("خطا در دریافت لیست سرورها:\n{$e->getMessage()}");
+            $this->end();
+            return;
+        }
+
+        $this->clearButtons();
+
+        if (empty($result['items']) && $this->page === 1) {
+            $this->menuText('هیچ سروری در این پنل یافت نشد.');
+        } else {
+            $this->menuText("سرورهای شما (صفحه {$this->page}):");
+
+            foreach ($result['items'] as $server) {
+                $ip = collect($server['networks']['v4'] ?? [])->firstWhere('type', 'public')['ip_address'] ?? '-';
+                $this->addButtonRow(InlineKeyboardButton::make(
+                    "{$server['name']} | {$server['status']} | {$ip}",
+                    callback_data: "{$server['id']}@showServer"
+                ));
+            }
+        }
+
+        $navRow = [];
+        if ($this->page > 1) {
+            $navRow[] = InlineKeyboardButton::make('⬅️ قبلی', callback_data: 'x@prevPage');
+        }
+        if ($result['has_more'] ?? false) {
+            $navRow[] = InlineKeyboardButton::make('➡️ بعدی', callback_data: 'x@nextPage');
+        }
+        if (! empty($navRow)) {
+            $this->addButtonRow(...$navRow);
+        }
+
+        $this->addButtonRow(InlineKeyboardButton::make('❌ بستن', callback_data: 'x@cancel'));
+        $this->showMenu();
+    }
+
+    public function showServer(Nutgram $bot, string $data): void
+    {
+        $this->serverId = $data;
+        $this->renderServerDetail($bot);
+    }
+
+    protected function renderServerDetail(Nutgram $bot): void
+    {
+        try {
+            $server = $this->client()->getServer($this->serverId);
+        } catch (ProviderException $e) {
+            $this->closeMenu("خطا در دریافت اطلاعات سرور:\n{$e->getMessage()}");
+            $this->end();
+            return;
+        }
+
+        $ip = collect($server['networks']['v4'] ?? [])->firstWhere('type', 'public')['ip_address'] ?? '-';
+
+        try {
+            $reservedIp = collect($this->client()->listReservedIps($this->serverId))->pluck('ip')->implode(', ') ?: '-';
+        } catch (ProviderException) {
+            $reservedIp = '-';
+        }
+
+        $this->clearButtons();
+        $this->menuText(
+            "🏷 نام: {$server['name']}\n".
+            "⚙️ وضعیت: {$server['status']}\n".
+            "🌐 آی‌پی: {$ip}\n".
+            "➕ آی‌پی رزرو: {$reservedIp}\n".
+            "📍 دیتاسنتر: {$server['region']['slug']}\n".
+            "💽 پلن: {$server['size_slug']}\n".
+            "💿 سیستم‌عامل: {$server['image']['distribution']} {$server['image']['name']}"
+        );
+
+        $this->addButtonGrid([
+            InlineKeyboardButton::make('🔌 روشن کردن', callback_data: 'x@powerOn'),
+            InlineKeyboardButton::make('⏻ خاموش کردن', callback_data: 'x@powerOff'),
+            InlineKeyboardButton::make('🔁 ری‌استارت', callback_data: 'x@reboot'),
+            InlineKeyboardButton::make('📈 تغییر پلن (ریسایز)', callback_data: 'x@resizeMenu'),
+            InlineKeyboardButton::make('🧱 ریبیلد', callback_data: 'x@rebuildMenu'),
+            InlineKeyboardButton::make('🌐 آی‌پی رزرو', callback_data: 'x@reservedIpMenu'),
+            InlineKeyboardButton::make('🗑 حذف سرور', callback_data: 'x@confirmDeleteServer'),
+        ]);
+
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت به لیست', callback_data: 'x@backToList'));
+        $this->addButtonRow(InlineKeyboardButton::make('❌ بستن', callback_data: 'x@cancel'));
+        $this->showMenu();
+    }
+
+    public function backToList(Nutgram $bot): void
+    {
+        $this->renderList($bot);
+    }
+
+    protected function dispatchAction(Nutgram $bot, string $ack, string $success, string $failure, callable $call): void
+    {
+        try {
+            $action = $call($this->client());
+        } catch (ProviderException $e) {
+            $this->setCallbackQueryOptions(['text' => "خطا: {$e->getMessage()}", 'show_alert' => true]);
+            return;
+        }
+
+        $this->setCallbackQueryOptions(['text' => $ack]);
+
+        if (! empty($action['id'])) {
+            PollProviderActionJob::dispatch($this->panelId, $action['id'], $bot->chatId(), $success, $failure);
+        }
+
+        $this->renderServerDetail($bot);
+    }
+
+    public function powerOn(Nutgram $bot): void
+    {
+        $this->dispatchAction(
+            $bot,
+            'درخواست روشن کردن ارسال شد.',
+            "✅ سرور روشن شد.",
+            "❌ روشن کردن سرور ناموفق بود.",
+            fn (ProviderClient $c) => $c->powerOn($this->serverId)
+        );
+    }
+
+    public function powerOff(Nutgram $bot): void
+    {
+        $this->dispatchAction(
+            $bot,
+            'درخواست خاموش کردن ارسال شد.',
+            "✅ سرور خاموش شد.",
+            "❌ خاموش کردن سرور ناموفق بود.",
+            fn (ProviderClient $c) => $c->powerOff($this->serverId)
+        );
+    }
+
+    public function reboot(Nutgram $bot): void
+    {
+        $this->dispatchAction(
+            $bot,
+            'درخواست ری‌استارت ارسال شد.',
+            "✅ سرور ری‌استارت شد.",
+            "❌ ری‌استارت سرور ناموفق بود.",
+            fn (ProviderClient $c) => $c->reboot($this->serverId)
+        );
+    }
+
+    public function resizeMenu(Nutgram $bot): void
+    {
+        try {
+            $server = $this->client()->getServer($this->serverId);
+
+            if (($server['status'] ?? null) !== 'off') {
+                $this->clearButtons();
+                $this->menuText("برای تغییر پلن، سرور باید ابتدا خاموش شود.\nآیا الان خاموش شود؟");
+                $this->addButtonRow(InlineKeyboardButton::make('⏻ خاموش کن', callback_data: 'x@powerOff'));
+                $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToServer'));
+                $this->showMenu();
+                return;
+            }
+
+            $sizes = $this->client()->sizes($server['region']['slug']);
+        } catch (ProviderException $e) {
+            $this->setCallbackQueryOptions(['text' => "خطا: {$e->getMessage()}", 'show_alert' => true]);
+            return;
+        }
+
+        $this->clearButtons();
+        $this->menuText('پلن جدید را انتخاب کنید:');
+
+        $this->addButtonGrid(array_map(function (array $s) {
+            $label = sprintf('%s | %dvCPU/%dMB | $%s', $s['slug'], $s['vcpus'], $s['memory'], $s['price_monthly']);
+
+            return InlineKeyboardButton::make($label, callback_data: "{$s['slug']}@doResize");
+        }, $sizes), perRow: 1);
+
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToServer'));
+        $this->showMenu();
+    }
+
+    public function doResize(Nutgram $bot, string $data): void
+    {
+        $this->dispatchAction(
+            $bot,
+            'درخواست تغییر پلن ارسال شد.',
+            "✅ پلن سرور به {$data} تغییر کرد.",
+            "❌ تغییر پلن ناموفق بود.",
+            fn (ProviderClient $c) => $c->resize($this->serverId, $data, true)
+        );
+    }
+
+    public function rebuildMenu(Nutgram $bot): void
+    {
+        try {
+            $images = $this->client()->images('distribution');
+        } catch (ProviderException $e) {
+            $this->setCallbackQueryOptions(['text' => "خطا: {$e->getMessage()}", 'show_alert' => true]);
+            return;
+        }
+
+        $this->clearButtons();
+        $this->menuText("⚠️ ریبیلد تمام اطلاعات روی سرور را پاک می‌کند.\nسیستم‌عامل جدید را انتخاب کنید:");
+
+        $this->addButtonGrid(array_map(
+            fn (array $img) => InlineKeyboardButton::make($img['label'], callback_data: "{$img['slug']}@confirmRebuild"),
+            $images
+        ));
+
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToServer'));
+        $this->showMenu();
+    }
+
+    public function confirmRebuild(Nutgram $bot, string $data): void
+    {
+        $this->pendingImage = $data;
+
+        $this->clearButtons();
+        $this->menuText("⚠️ با نصب مجدد «{$data}»، تمام دیتای فعلی سرور پاک می‌شود.\nمطمئن هستید؟");
+        $this->addButtonRow(InlineKeyboardButton::make('✅ بله، ریبیلد کن', callback_data: 'yes@doRebuild'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'));
+        $this->showMenu();
+    }
+
+    public function doRebuild(Nutgram $bot): void
+    {
+        $this->dispatchAction(
+            $bot,
+            'درخواست ریبیلد ارسال شد.',
+            '✅ ریبیلد سرور با موفقیت انجام شد.',
+            '❌ ریبیلد سرور ناموفق بود.',
+            fn (ProviderClient $c) => $c->rebuild($this->serverId, $this->pendingImage)
+        );
+    }
+
+    /**
+     * DigitalOcean has no "change the server's IP" operation — a droplet's main
+     * IP is fixed for its lifetime. The only thing that can be added/replaced
+     * is an extra "reserved IP" pointed at the droplet, so both cases are
+     * handled by this single menu instead of two separate, confusing actions.
+     */
+    public function reservedIpMenu(Nutgram $bot): void
+    {
+        try {
+            $current = $this->client()->listReservedIps($this->serverId);
+        } catch (ProviderException $e) {
+            $this->setCallbackQueryOptions(['text' => "خطا: {$e->getMessage()}", 'show_alert' => true]);
+            return;
+        }
+
+        if (empty($current)) {
+            $this->allocateAndAssignReservedIp($bot);
+            return;
+        }
+
+        $this->clearButtons();
+        $this->menuText("آی‌پی رزرو فعلی سرور: {$current[0]['ip']}\nآیا می‌خواهید آن را با یک آی‌پی جدید جایگزین کنید؟");
+        $this->addButtonRow(InlineKeyboardButton::make('✅ بله، جایگزین کن', callback_data: 'yes@replaceReservedIp'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToServer'));
+        $this->showMenu();
+    }
+
+    public function replaceReservedIp(Nutgram $bot): void
+    {
+        try {
+            foreach ($this->client()->listReservedIps($this->serverId) as $reservedIp) {
+                $this->client()->releaseReservedIp($reservedIp['ip']);
+            }
+        } catch (ProviderException $e) {
+            $this->setCallbackQueryOptions(['text' => "خطا: {$e->getMessage()}", 'show_alert' => true]);
+            return;
+        }
+
+        $this->allocateAndAssignReservedIp($bot, ack: 'در حال جایگزینی آی‌پی رزرو...');
+    }
+
+    protected function allocateAndAssignReservedIp(Nutgram $bot, string $ack = 'در حال اختصاص آی‌پی رزرو...'): void
+    {
+        try {
+            $server = $this->client()->getServer($this->serverId);
+            $reserved = $this->client()->allocateReservedIp($server['region']['slug']);
+            $ip = $reserved['reserved_ip']['ip'] ?? null;
+
+            if (! $ip) {
+                throw new ProviderException('پاسخ نامعتبر از سرویس‌دهنده.');
+            }
+
+            $action = $this->client()->assignReservedIp($ip, $this->serverId);
+        } catch (ProviderException $e) {
+            $this->setCallbackQueryOptions(['text' => "خطا: {$e->getMessage()}", 'show_alert' => true]);
+            return;
+        }
+
+        $this->setCallbackQueryOptions(['text' => $ack]);
+
+        if (! empty($action['id'])) {
+            PollProviderActionJob::dispatch(
+                $this->panelId,
+                $action['id'],
+                $bot->chatId(),
+                "✅ آی‌پی رزرو {$ip} به سرور اختصاص یافت.",
+                "❌ اختصاص آی‌پی {$ip} ناموفق بود.",
+            );
+        }
+
+        $this->renderServerDetail($bot);
+    }
+
+    public function confirmDeleteServer(Nutgram $bot): void
+    {
+        $this->clearButtons();
+        $this->menuText('⚠️ آیا از حذف کامل این سرور مطمئن هستید؟ این عملیات غیرقابل بازگشت است.');
+        $this->addButtonRow(InlineKeyboardButton::make('✅ بله، حذف کن', callback_data: 'yes@doDeleteServer'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'));
+        $this->showMenu();
+    }
+
+    public function doDeleteServer(Nutgram $bot): void
+    {
+        try {
+            $this->client()->deleteServer($this->serverId);
+        } catch (ProviderException $e) {
+            $this->setCallbackQueryOptions(['text' => "خطا: {$e->getMessage()}", 'show_alert' => true]);
+            return;
+        }
+
+        $this->setCallbackQueryOptions(['text' => 'سرور حذف شد.']);
+        $this->renderList($bot);
+    }
+
+    public function backToServer(Nutgram $bot): void
+    {
+        $this->renderServerDetail($bot);
+    }
+}
