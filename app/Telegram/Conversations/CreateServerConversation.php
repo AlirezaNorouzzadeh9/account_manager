@@ -37,7 +37,7 @@ class CreateServerConversation extends InlineMenu
 
         if ($panels->isEmpty()) {
             $this->menuText("هیچ پنل فعالی وجود ندارد.\nابتدا از منوی «پنل‌های من» یک پنل اضافه کنید.");
-            $this->addButtonRow(InlineKeyboardButton::make('❌ بستن', callback_data: 'x@cancel'));
+            $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@cancel'));
             $this->showMenu();
             return;
         }
@@ -51,7 +51,7 @@ class CreateServerConversation extends InlineMenu
             ));
         }
 
-        $this->addButtonRow(InlineKeyboardButton::make('❌ لغو', callback_data: 'x@cancel'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@cancel'));
         $this->showMenu();
     }
 
@@ -89,7 +89,6 @@ class CreateServerConversation extends InlineMenu
         ));
 
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToPanels'));
-        $this->addButtonRow(InlineKeyboardButton::make('❌ لغو', callback_data: 'x@cancel'));
         $this->showMenu();
     }
 
@@ -133,7 +132,6 @@ class CreateServerConversation extends InlineMenu
         }, $sizes), perRow: 1);
 
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToRegions'));
-        $this->addButtonRow(InlineKeyboardButton::make('❌ لغو', callback_data: 'x@cancel'));
         $this->showMenu();
     }
 
@@ -171,7 +169,6 @@ class CreateServerConversation extends InlineMenu
         ));
 
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToSizes'));
-        $this->addButtonRow(InlineKeyboardButton::make('❌ لغو', callback_data: 'x@cancel'));
         $this->showMenu();
     }
 
@@ -204,8 +201,13 @@ class CreateServerConversation extends InlineMenu
             'ساخته شود؟'
         );
         $this->addButtonRow(InlineKeyboardButton::make('✅ بله، بساز', callback_data: 'yes@confirm'));
-        $this->addButtonRow(InlineKeyboardButton::make('❌ انصراف', callback_data: 'x@cancel'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToImages'));
         $this->showMenu();
+    }
+
+    public function backToImages(Nutgram $bot): void
+    {
+        $this->showImages($bot);
     }
 
     public function confirm(Nutgram $bot): void

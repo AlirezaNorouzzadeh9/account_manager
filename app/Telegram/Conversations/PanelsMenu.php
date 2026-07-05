@@ -32,7 +32,7 @@ class PanelsMenu extends InlineMenu
         }
 
         $this->addButtonRow(InlineKeyboardButton::make('➕ افزودن پنل', callback_data: 'x@addPanel'));
-        $this->addButtonRow(InlineKeyboardButton::make('❌ بستن', callback_data: 'x@cancel'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@cancel'));
         $this->showMenu();
     }
 

@@ -6,15 +6,12 @@ use App\Enums\Provider;
 use App\Models\Panel;
 use App\Services\Providers\ProviderException;
 use App\Services\Providers\ProviderManager;
-use App\Telegram\Support\Cancellable;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 
 class AddPanelConversation extends InlineMenu
 {
-    use Cancellable;
-
     protected ?string $provider = null;
     protected ?string $name = null;
 
@@ -28,8 +25,15 @@ class AddPanelConversation extends InlineMenu
             $this->addButtonRow(InlineKeyboardButton::make($label, callback_data: "{$provider->value}@chooseProvider"));
         }
 
-        $this->addButtonRow(InlineKeyboardButton::make('❌ لغو', callback_data: 'x@cancel'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToPanels'));
         $this->showMenu();
+    }
+
+    public function backToPanels(Nutgram $bot): void
+    {
+        $this->closeMenu();
+        $this->end();
+        PanelsMenu::begin($bot);
     }
 
     public function chooseProvider(Nutgram $bot, string $data): void

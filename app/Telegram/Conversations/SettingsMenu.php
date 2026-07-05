@@ -16,7 +16,7 @@ class SettingsMenu extends InlineMenu
         $this->clearButtons();
         $this->menuText('⚙️ تنظیمات:');
         $this->addButtonRow(InlineKeyboardButton::make('🔒 وایرگاردها', callback_data: 'x@wireguard'));
-        $this->addButtonRow(InlineKeyboardButton::make('❌ بستن', callback_data: 'x@cancel'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@cancel'));
         $this->showMenu();
     }
 

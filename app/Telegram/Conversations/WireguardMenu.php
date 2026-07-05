@@ -3,15 +3,12 @@
 namespace App\Telegram\Conversations;
 
 use App\Models\WireguardConfig;
-use App\Telegram\Support\Cancellable;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 
 class WireguardMenu extends InlineMenu
 {
-    use Cancellable;
-
     public function start(Nutgram $bot): void
     {
         $configs = WireguardConfig::query()->latest()->get();
@@ -32,8 +29,15 @@ class WireguardMenu extends InlineMenu
         }
 
         $this->addButtonRow(InlineKeyboardButton::make('➕ افزودن وایرگارد', callback_data: 'x@addConfig'));
-        $this->addButtonRow(InlineKeyboardButton::make('❌ بستن', callback_data: 'x@cancel'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToSettings'));
         $this->showMenu();
+    }
+
+    public function backToSettings(Nutgram $bot): void
+    {
+        $this->closeMenu();
+        $this->end();
+        SettingsMenu::begin($bot);
     }
 
     public function addConfig(Nutgram $bot): void

@@ -57,7 +57,7 @@ class ServerListMenu extends InlineMenu
 
         if ($panels->isEmpty()) {
             $this->menuText("هیچ پنل فعالی وجود ندارد.\nابتدا از منوی «پنل‌های من» یک پنل اضافه کنید.");
-            $this->addButtonRow(InlineKeyboardButton::make('❌ بستن', callback_data: 'x@cancel'));
+            $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@cancel'));
             $this->showMenu();
             return;
         }
@@ -71,7 +71,7 @@ class ServerListMenu extends InlineMenu
             ));
         }
 
-        $this->addButtonRow(InlineKeyboardButton::make('❌ لغو', callback_data: 'x@cancel'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@cancel'));
         $this->showMenu();
     }
 
@@ -131,8 +131,13 @@ class ServerListMenu extends InlineMenu
             $this->addButtonRow(...$navRow);
         }
 
-        $this->addButtonRow(InlineKeyboardButton::make('❌ بستن', callback_data: 'x@cancel'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToPanelChoice'));
         $this->showMenu();
+    }
+
+    public function backToPanelChoice(Nutgram $bot): void
+    {
+        $this->start($bot);
     }
 
     public function showServer(Nutgram $bot, string $data): void
@@ -198,7 +203,6 @@ class ServerListMenu extends InlineMenu
         ]);
 
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت به لیست', callback_data: 'x@backToList'));
-        $this->addButtonRow(InlineKeyboardButton::make('❌ بستن', callback_data: 'x@cancel'));
         $this->showMenu();
     }
 
