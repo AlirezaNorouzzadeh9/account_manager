@@ -2,8 +2,12 @@
 
 namespace App\Telegram\Conversations;
 
+use App\Jobs\InstallPasarguardNodeJob;
 use App\Jobs\PollProviderActionJob;
+use App\Jobs\UpdateWireguardsJob;
 use App\Models\Panel;
+use App\Models\ServerSecret;
+use App\Services\Providers\DigitalOcean\DigitalOceanClient;
 use App\Services\Providers\ProviderClient;
 use App\Services\Providers\ProviderException;
 use App\Services\Providers\ProviderManager;
@@ -155,14 +159,29 @@ class ServerListMenu extends InlineMenu
             $reservedIp = '-';
         }
 
+        $flag = DigitalOceanClient::regionFlag($server['region']['slug'] ?? '');
+        $regionName = $server['region']['name'] ?? $server['region']['slug'] ?? '-';
+
+        $size = $server['size'] ?? [];
+        $vcpus = $size['vcpus'] ?? '-';
+        $ramGb = isset($size['memory']) ? round($size['memory'] / 1024, 1) : '-';
+        $diskGb = $size['disk'] ?? '-';
+        $price = isset($size['price_monthly']) ? '$'.$size['price_monthly'].'/ماه' : '-';
+
+        $password = ServerSecret::where('panel_id', $this->panelId)
+            ->where('provider_server_id', $this->serverId)
+            ->value('root_password') ?? '-';
+
         $this->clearButtons();
         $this->menuText(
             "🏷 نام: {$server['name']}\n".
             "⚙️ وضعیت: {$server['status']}\n".
             "🌐 آی‌پی: {$ip}\n".
             "➕ آی‌پی رزرو: {$reservedIp}\n".
-            "📍 دیتاسنتر: {$server['region']['slug']}\n".
-            "💽 پلن: {$server['size_slug']}\n".
+            "🔑 پسورد روت: {$password}\n".
+            "{$flag} دیتاسنتر: {$regionName}\n".
+            "💽 پلن: {$server['size_slug']} ({$vcpus} vCPU / {$ramGb}GB RAM / {$diskGb}GB Disk)\n".
+            "💰 قیمت: {$price}\n".
             "💿 سیستم‌عامل: {$server['image']['distribution']} {$server['image']['name']}"
         );
 
@@ -173,6 +192,8 @@ class ServerListMenu extends InlineMenu
             InlineKeyboardButton::make('📈 تغییر پلن (ریسایز)', callback_data: 'x@resizeMenu'),
             InlineKeyboardButton::make('🧱 ریبیلد', callback_data: 'x@rebuildMenu'),
             InlineKeyboardButton::make('🌐 آی‌پی رزرو', callback_data: 'x@reservedIpMenu'),
+            InlineKeyboardButton::make('🧩 نود کردن به پاسارگارد', callback_data: 'x@confirmInstallNode'),
+            InlineKeyboardButton::make('🔄 بروزرسانی وایرگاردها', callback_data: 'x@updateWireguards'),
             InlineKeyboardButton::make('🗑 حذف سرور', callback_data: 'x@confirmDeleteServer'),
         ]);
 
@@ -394,6 +415,64 @@ class ServerListMenu extends InlineMenu
             );
         }
 
+        $this->renderServerDetail($bot);
+    }
+
+    public function confirmInstallNode(Nutgram $bot): void
+    {
+        $hasSecret = ServerSecret::where('panel_id', $this->panelId)
+            ->where('provider_server_id', $this->serverId)
+            ->exists();
+
+        if (! $hasSecret) {
+            $this->closeMenu(
+                "🧩 این کار داکر را (در صورت نبود) روی سرور نصب می‌کند و یک نود پاسارگارد بالا می‌آورد.\n".
+                'پسورد روت این سرور ذخیره نشده (احتمالاً قبل از این قابلیت ساخته شده یا دستی عوض شده).'
+            );
+            $this->end();
+            NodePasswordConversation::begin($bot, $bot->userId(), $bot->chatId(), [$this->panelId, $this->serverId]);
+            return;
+        }
+
+        $this->clearButtons();
+        $this->menuText(
+            "🧩 این کار داکر را (در صورت نبود) روی سرور نصب می‌کند و یک نود پاسارگارد بالا می‌آورد.\n".
+            'این عملیات چند دقیقه طول می‌کشد. ادامه بدهم؟'
+        );
+        $this->addButtonRow(InlineKeyboardButton::make('✅ بله، نصب کن', callback_data: 'yes@installNode'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'));
+        $this->showMenu();
+    }
+
+    public function installNode(Nutgram $bot): void
+    {
+        InstallPasarguardNodeJob::dispatch($this->panelId, $this->serverId, $bot->chatId());
+
+        $this->closeMenu('⏳ درخواست نود کردن سرور ثبت شد. به محض اتمام نتیجه را برایتان ارسال می‌کنم.');
+        $this->end();
+    }
+
+    public function updateWireguards(Nutgram $bot): void
+    {
+        $hasSecret = ServerSecret::where('panel_id', $this->panelId)
+            ->where('provider_server_id', $this->serverId)
+            ->exists();
+
+        if (! $hasSecret) {
+            $this->closeMenu('پسورد روت این سرور ذخیره نشده (احتمالاً قبل از این قابلیت ساخته شده یا دستی عوض شده).');
+            $this->end();
+            NodePasswordConversation::begin(
+                $bot,
+                $bot->userId(),
+                $bot->chatId(),
+                [$this->panelId, $this->serverId, 'update_wireguards']
+            );
+            return;
+        }
+
+        UpdateWireguardsJob::dispatch($this->panelId, $this->serverId, $bot->chatId());
+
+        $this->setCallbackQueryOptions(['text' => 'درخواست بروزرسانی وایرگاردها ثبت شد.']);
         $this->renderServerDetail($bot);
     }
 

@@ -10,5 +10,6 @@ class CancelCommand
     {
         $bot->endConversation();
         $bot->sendMessage('عملیات لغو شد.');
+        (new StartCommand())($bot);
     }
 }

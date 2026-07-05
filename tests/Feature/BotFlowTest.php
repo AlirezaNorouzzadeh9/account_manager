@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\PollProviderActionJob;
+use App\Jobs\CreateServerReadyJob;
 use App\Models\Panel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -55,7 +55,7 @@ class BotFlowTest extends TestCase
         $this->assertSame('dop_v1_fake_token_for_testing', $panel->api_token);
     }
 
-    public function test_create_server_conversation_dispatches_poll_job(): void
+    public function test_create_server_conversation_dispatches_ready_job(): void
     {
         Queue::fake();
 
@@ -104,6 +104,6 @@ class BotFlowTest extends TestCase
         $bot->hearText('my-server-1')->reply();
         $bot->hearCallbackQueryData('yes')->reply();
 
-        Queue::assertPushed(PollProviderActionJob::class);
+        Queue::assertPushed(CreateServerReadyJob::class);
     }
 }

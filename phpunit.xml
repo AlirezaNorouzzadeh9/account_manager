@@ -36,5 +36,6 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="PASARGUARD_API_KEY" value="00000000-0000-0000-0000-000000000000"/>
     </php>
 </phpunit>

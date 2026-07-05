@@ -15,7 +15,8 @@ class StartCommand
             reply_markup: InlineKeyboardMarkup::make()
                 ->addRow(InlineKeyboardButton::make('🖥 پنل‌های من', callback_data: 'panels:menu'))
                 ->addRow(InlineKeyboardButton::make('➕ ساخت سرور', callback_data: 'server:create'))
-                ->addRow(InlineKeyboardButton::make('📋 سرورهای من', callback_data: 'server:list')),
+                ->addRow(InlineKeyboardButton::make('📋 سرورهای من', callback_data: 'server:list'))
+                ->addRow(InlineKeyboardButton::make('⚙️ تنظیمات', callback_data: 'settings:menu')),
         );
     }
 }

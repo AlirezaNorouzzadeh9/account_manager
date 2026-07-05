@@ -3,7 +3,8 @@
 namespace App\Telegram\Conversations;
 
 use App\Models\Panel;
-use App\Jobs\PollProviderActionJob;
+use App\Models\ServerSecret;
+use App\Jobs\CreateServerReadyJob;
 use App\Services\Providers\ProviderException;
 use App\Services\Providers\ProviderManager;
 use App\Telegram\Support\Cancellable;
@@ -231,21 +232,29 @@ class CreateServerConversation extends InlineMenu
         }
 
         $actionId = $result['links']['actions'][0]['id'] ?? null;
+        $serverId = $result['droplet']['id'] ?? null;
         $credentials = "👤 کاربر: root\n🔑 رمز عبور: {$password}";
 
+        if ($serverId) {
+            ServerSecret::updateOrCreate(
+                ['panel_id' => $panel->id, 'provider_server_id' => $serverId],
+                ['root_password' => $password]
+            );
+        }
+
         if ($actionId) {
-            PollProviderActionJob::dispatch(
+            CreateServerReadyJob::dispatch(
                 $panel->id,
                 $actionId,
                 $bot->chatId(),
-                "✅ سرور «{$this->hostname}» با موفقیت ساخته شد.\n\n{$credentials}",
-                "❌ ساخت سرور «{$this->hostname}» ناموفق بود.",
+                $this->hostname,
+                $credentials,
             );
         }
 
         $this->closeMenu(
             "🚀 درخواست ساخت سرور «{$this->hostname}» ثبت شد.\n".
-            'به محض آماده شدن، آی‌پی و اطلاعات ورود سرور برایتان ارسال می‌شود.'
+            'به محض آماده شدن، آی‌پی، اطلاعات ورود و نتیجه‌ی پینگ از سرورهای ایران برایتان ارسال می‌شود.'
         );
         $this->end();
     }

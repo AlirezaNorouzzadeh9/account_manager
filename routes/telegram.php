@@ -3,8 +3,10 @@
 
 use App\Telegram\Conversations\AddPanelConversation;
 use App\Telegram\Conversations\CreateServerConversation;
+use App\Telegram\Conversations\NodePasswordConversation;
 use App\Telegram\Conversations\PanelsMenu;
 use App\Telegram\Conversations\ServerListMenu;
+use App\Telegram\Conversations\SettingsMenu;
 use App\Telegram\Handlers\CancelCommand;
 use App\Telegram\Handlers\StartCommand;
 use App\Telegram\Middleware\AdminOnly;
@@ -29,6 +31,7 @@ $bot->onCallbackQueryData('panels:menu', fn (Nutgram $bot) => PanelsMenu::begin(
 $bot->onCallbackQueryData('panels:add', fn (Nutgram $bot) => AddPanelConversation::begin($bot));
 $bot->onCallbackQueryData('server:create', fn (Nutgram $bot) => CreateServerConversation::begin($bot));
 $bot->onCallbackQueryData('server:list', fn (Nutgram $bot) => ServerListMenu::begin($bot));
+$bot->onCallbackQueryData('settings:menu', fn (Nutgram $bot) => SettingsMenu::begin($bot));
 
 $bot->onCallbackQueryData(
     'view_server:{panelId}:{serverId}',
@@ -37,5 +40,25 @@ $bot->onCallbackQueryData(
         $bot->userId(),
         $bot->chatId(),
         [$panelId, $serverId]
+    )
+);
+
+$bot->onCallbackQueryData(
+    'retry_node_pw:{panelId}:{serverId}',
+    fn (Nutgram $bot, int $panelId, string $serverId) => NodePasswordConversation::begin(
+        $bot,
+        $bot->userId(),
+        $bot->chatId(),
+        [$panelId, $serverId]
+    )
+);
+
+$bot->onCallbackQueryData(
+    'retry_wg_pw:{panelId}:{serverId}',
+    fn (Nutgram $bot, int $panelId, string $serverId) => NodePasswordConversation::begin(
+        $bot,
+        $bot->userId(),
+        $bot->chatId(),
+        [$panelId, $serverId, 'update_wireguards']
     )
 );

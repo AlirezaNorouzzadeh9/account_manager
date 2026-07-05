@@ -1,0 +1,355 @@
+<?php
+
+namespace App\Services\Pasarguard;
+
+use App\Models\WireguardConfig;
+use Illuminate\Support\Collection;
+use phpseclib3\Net\SSH2;
+use RuntimeException;
+
+/**
+ * Turns a freshly created server into a PasarGuard (Marzban-compatible) node:
+ * installs Docker if missing, writes the docker-compose/.env files, generates
+ * this node's own TLS certificate, and brings the "node-1" container up.
+ *
+ * The TLS cert/key CANNOT be the same fixed pair for every node: the panel
+ * validates the node's certificate against the IP it's connecting to
+ * (SSL "IP address mismatch" otherwise), so each node needs its own
+ * self-signed cert with subjectAltName = its own public IP. Only API_KEY is
+ * a fixed shared secret across every node (see config/pasarguard.php).
+ */
+class PasarguardNodeInstaller
+{
+    protected const REMOTE_DIR = '/root/pg-node-1';
+    protected const DATA_DIR = '/var/lib/pg-node-1';
+
+    protected const COMPOSE_YAML = <<<'YAML'
+services:
+  node-1:
+    container_name: node-1
+    image: pasarguard/node:latest
+    restart: always
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    env_file: node-1/.env
+    volumes:
+      - /var/lib/pg-node-1:/var/lib/pg-node-1
+    ports:
+      - "8743:62050"
+      - "451-460:451-460"
+YAML;
+
+    /**
+     * @return array{success: bool, message: string, log: string}
+     */
+    public function install(string $host, string $username, string $password): array
+    {
+        $ssh = new SSH2($host, 22);
+        $ssh->setTimeout(20);
+
+        if (! $ssh->login($username, $password)) {
+            throw new RuntimeException('اتصال SSH ناموفق بود (احتمالاً سرور هنوز کاملاً آماده نشده).');
+        }
+
+        $log = '';
+        $wireguardConfigs = WireguardConfig::query()->oldest()->get();
+
+        // A just-booted droplet may still be running its first-boot apt
+        // operations (cloud-init), holding the dpkg lock — wait it out first,
+        // otherwise our own apt/docker install below can fail or hang.
+        $ssh->setTimeout(120);
+        $log .= "\$ cloud-init status --wait\n".$this->run($ssh, 'cloud-init status --wait 2>&1');
+        $ssh->setTimeout(20);
+
+        [$dockerOk, $dockerLog] = $this->ensureDocker($ssh);
+        $log .= $dockerLog;
+
+        if (! $dockerOk) {
+            return [
+                'success' => false,
+                'message' => 'نصب Docker روی سرور ناموفق بود.',
+                'log' => $log,
+                'cert' => '',
+            ];
+        }
+
+        if ($wireguardConfigs->isNotEmpty()) {
+            $log .= $this->ensureWireguardTools($ssh);
+        }
+
+        $this->run($ssh, 'mkdir -p '.escapeshellarg(self::REMOTE_DIR.'/node-1').' '.escapeshellarg(self::DATA_DIR.'/certs'));
+
+        $this->writeRemoteFile($ssh, self::REMOTE_DIR.'/docker-compose.yml', self::COMPOSE_YAML);
+        $this->writeRemoteFile($ssh, self::REMOTE_DIR.'/node-1/.env', $this->buildEnvFile($wireguardConfigs->isNotEmpty()));
+        [$certLog, $certContent] = $this->generateNodeCertificate($ssh, $host);
+        $log .= $certLog;
+
+        // A fresh droplet's network/DNS can still be settling right after boot
+        // (e.g. transient failures resolving registry-1.docker.io), so retry
+        // the image pull/up a few times before giving up.
+        $ssh->setTimeout(60);
+        $nodeUp = false;
+
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $log .= "\$ docker compose up -d (attempt {$attempt}/3)\n".
+                $this->run($ssh, 'cd '.escapeshellarg(self::REMOTE_DIR).' && docker compose up -d 2>&1');
+
+            $running = trim($this->run($ssh, "docker inspect -f '{{.State.Running}}' node-1 2>&1"));
+            $nodeUp = $running === 'true';
+
+            if ($nodeUp || $attempt === 3) {
+                break;
+            }
+
+            sleep(10);
+        }
+
+        if (! $nodeUp) {
+            $log .= "\n\$ docker compose logs --tail 30 node-1\n".$this->run($ssh, 'cd '.escapeshellarg(self::REMOTE_DIR).' && docker compose logs --tail 30 node-1');
+        }
+
+        $this->resetExistingWireguards($ssh);
+        [$wireguardsUp, $wireguardLog] = $this->installWireguards($ssh, $wireguardConfigs);
+        $log .= $wireguardLog;
+
+        if (! $nodeUp || ! $wireguardsUp) {
+            return [
+                'success' => false,
+                'message' => $nodeUp
+                    ? 'نود بالا آمد ولی حداقل یکی از کانفیگ‌های وایرگارد فعال نشد.'
+                    : 'کانتینر نود بالا نیامد. لاگ کانتینر بررسی شود.',
+                'log' => $log,
+                'cert' => $certContent,
+            ];
+        }
+
+        $message = 'نود پاسارگارد با موفقیت نصب و اجرا شد.';
+
+        if ($wireguardConfigs->isNotEmpty()) {
+            $message .= " ({$wireguardConfigs->count()} کانفیگ وایرگارد هم فعال شد.)";
+        }
+
+        return [
+            'success' => true,
+            'message' => $message,
+            'log' => $log,
+            'cert' => $certContent,
+        ];
+    }
+
+    /**
+     * (Re)applies every saved WireGuard config to an already-set-up node,
+     * without touching Docker/the node container. Used both by the initial
+     * install and by the standalone "update WireGuards" action.
+     *
+     * @return array{success: bool, message: string, log: string}
+     */
+    public function updateWireguards(string $host, string $username, string $password): array
+    {
+        $ssh = new SSH2($host, 22);
+        $ssh->setTimeout(20);
+
+        if (! $ssh->login($username, $password)) {
+            throw new RuntimeException('اتصال SSH ناموفق بود (احتمالاً پسورد اشتباه است).');
+        }
+
+        $configs = WireguardConfig::query()->oldest()->get();
+
+        if ($configs->isNotEmpty()) {
+            $this->ensureWireguardTools($ssh);
+        }
+
+        $this->resetExistingWireguards($ssh);
+        [$allUp, $log] = $this->installWireguards($ssh, $configs);
+
+        return [
+            'success' => $allUp,
+            'message' => $configs->isEmpty()
+                ? 'هیچ کانفیگ وایرگاردی ذخیره نشده؛ اینترفیس‌های قبلی (در صورت وجود) حذف شدند.'
+                : ($allUp
+                    ? "همه‌ی {$configs->count()} کانفیگ وایرگارد با موفقیت بروزرسانی شدند."
+                    : 'حداقل یکی از کانفیگ‌های وایرگارد فعال نشد.'),
+            'log' => $log,
+        ];
+    }
+
+    /**
+     * Tears down every wg-quick interface currently on the box so re-applying
+     * the saved configs always reflects an exact, clean sync (handles
+     * renamed/removed configs correctly instead of only adding new ones).
+     */
+    protected function resetExistingWireguards(SSH2 $ssh): void
+    {
+        $files = trim($this->run($ssh, 'ls /etc/wireguard/*.conf 2>/dev/null'));
+
+        if ($files === '') {
+            return;
+        }
+
+        foreach (preg_split('/\s+/', $files) as $path) {
+            $iface = basename($path, '.conf');
+            $this->run($ssh, "systemctl disable --now wg-quick@{$iface} 2>&1");
+            $this->run($ssh, 'rm -f '.escapeshellarg($path));
+        }
+    }
+
+    /**
+     * @return array{0: bool, 1: string}
+     */
+    protected function installWireguards(SSH2 $ssh, Collection $configs): array
+    {
+        if ($configs->isEmpty()) {
+            return [true, ''];
+        }
+
+        $log = '';
+        $allUp = true;
+        $usedNames = [];
+
+        // Units for wg-quick@ may have just been installed by ensureWireguardTools()
+        // above; reload so systemd actually sees them before we enable anything.
+        $this->run($ssh, 'systemctl daemon-reload 2>&1');
+
+        foreach ($configs->values() as $config) {
+            $iface = $this->sanitizeInterfaceName($config->name, $usedNames);
+
+            $this->writeRemoteFile($ssh, "/etc/wireguard/{$iface}.conf", $config->config);
+            $this->run($ssh, 'chmod 600 '.escapeshellarg("/etc/wireguard/{$iface}.conf"));
+            $enableOutput = $this->run($ssh, "systemctl enable --now wg-quick@{$iface} 2>&1");
+
+            // Check BOTH that it's running now AND that it's enabled to come
+            // back up after a reboot — "wg show"/"ip link" alone only prove
+            // the former, not that a reboot won't lose the tunnel.
+            $enabled = trim($this->run($ssh, "systemctl is-enabled wg-quick@{$iface} 2>&1")) === 'enabled';
+            $isUp = trim($this->run($ssh, "wg show {$iface} 2>&1")) !== '' || str_contains(
+                $this->run($ssh, "ip link show {$iface} 2>&1"),
+                'state UP'
+            );
+            $ok = $enabled && $isUp;
+
+            $log .= "\$ wg-quick@{$iface} ({$config->name}): up=".($isUp ? 'yes' : 'no').', enabled='.($enabled ? 'yes' : 'no')."\n";
+
+            if (! $ok) {
+                $allUp = false;
+                $log .= $enableOutput."\n";
+                $log .= $this->run($ssh, "journalctl -u wg-quick@{$iface} --no-pager -n 15 2>&1")."\n";
+            }
+        }
+
+        return [$allUp, $log];
+    }
+
+    /**
+     * Builds a valid, unique Linux interface name (max 15 chars) from the
+     * user-given config name, e.g. "it" -> "it", so /etc/wireguard/it.conf
+     * matches what the user actually typed instead of an opaque wg0/wg1.
+     */
+    protected function sanitizeInterfaceName(string $name, array &$usedNames): string
+    {
+        $base = strtolower(preg_replace('/[^a-z0-9]/i', '', $name));
+        $base = substr($base, 0, 12);
+
+        if ($base === '') {
+            $base = 'wg';
+        }
+
+        $candidate = $base;
+        $suffix = 1;
+
+        while (in_array($candidate, $usedNames, true)) {
+            $candidate = substr($base, 0, 15 - strlen((string) $suffix)).$suffix;
+            $suffix++;
+        }
+
+        $usedNames[] = $candidate;
+
+        return $candidate;
+    }
+
+    /**
+     * @return array{0: string, 1: string} [log excerpt, generated cert PEM content]
+     */
+    protected function generateNodeCertificate(SSH2 $ssh, string $ip): array
+    {
+        $certPath = self::DATA_DIR.'/certs/ssl_cert.pem';
+        $keyPath = self::DATA_DIR.'/certs/ssl_key.pem';
+
+        $cmd = 'openssl req -x509 -nodes -newkey rsa:2048 '.
+            '-keyout '.escapeshellarg($keyPath).' '.
+            '-out '.escapeshellarg($certPath).' '.
+            '-days 3650 '.
+            '-subj '.escapeshellarg("/CN={$ip}").' '.
+            '-addext '.escapeshellarg("subjectAltName=IP:{$ip}").' 2>&1';
+
+        $output = "\$ generate node TLS cert for {$ip}\n".$this->run($ssh, $cmd);
+        $this->run($ssh, 'chmod 600 '.escapeshellarg($keyPath));
+
+        $cert = trim($this->run($ssh, 'cat '.escapeshellarg($certPath)));
+
+        return [$output, $cert];
+    }
+
+    /**
+     * @return array{0: bool, 1: string} [docker is now available, log excerpt]
+     */
+    protected function ensureDocker(SSH2 $ssh): array
+    {
+        $hasDocker = trim($this->run($ssh, 'command -v docker'));
+
+        if ($hasDocker !== '') {
+            return [true, ''];
+        }
+
+        $ssh->setTimeout(240);
+        $output = "\$ install docker\n".$this->run($ssh, 'curl -fsSL https://get.docker.com | sh 2>&1');
+        $ssh->setTimeout(20);
+
+        $hasDockerNow = trim($this->run($ssh, 'command -v docker'));
+
+        return [$hasDockerNow !== '', $output];
+    }
+
+    protected function ensureWireguardTools(SSH2 $ssh): string
+    {
+        $hasWg = trim($this->run($ssh, 'command -v wg-quick'));
+
+        if ($hasWg !== '') {
+            return '';
+        }
+
+        return "\$ install wireguard-tools\n".$this->run(
+            $ssh,
+            'apt-get update -y >/dev/null 2>&1; apt-get install -y wireguard-tools 2>&1'
+        );
+    }
+
+    protected function buildEnvFile(bool $hasWireguard): string
+    {
+        $lines = [
+            'SERVICE_PORT = 62050',
+            'SSL_CERT_FILE = '.self::DATA_DIR.'/certs/ssl_cert.pem',
+            'SSL_KEY_FILE = '.self::DATA_DIR.'/certs/ssl_key.pem',
+            'API_KEY = '.config('pasarguard.api_key'),
+        ];
+
+        if ($hasWireguard) {
+            $lines[] = 'PG_NODE_WG_HOST_ROUTING = 1';
+        }
+
+        $lines[] = '';
+
+        return implode("\n", $lines);
+    }
+
+    protected function writeRemoteFile(SSH2 $ssh, string $path, string $content): void
+    {
+        $encoded = base64_encode($content);
+        $this->run($ssh, "echo '{$encoded}' | base64 -d > ".escapeshellarg($path));
+    }
+
+    protected function run(SSH2 $ssh, string $command): string
+    {
+        return (string) $ssh->exec($command);
+    }
+}

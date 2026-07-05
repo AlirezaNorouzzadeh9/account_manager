@@ -58,6 +58,17 @@ class DigitalOceanClient implements ProviderClient
         'syd' => ['Australia', '🇦🇺', 8],
     ];
 
+    /**
+     * Flag + country for a region slug, without any API call. Used to label
+     * a single already-known region (e.g. in a server detail view).
+     */
+    public static function regionFlag(string $slug): string
+    {
+        $prefix = substr($slug, 0, 3);
+
+        return (self::REGION_COUNTRIES[$prefix] ?? [null, '🌐'])[1];
+    }
+
     public function regions(): array
     {
         $regions = $this->handle($this->http()->get('/regions', ['per_page' => 200]))['regions'] ?? [];
