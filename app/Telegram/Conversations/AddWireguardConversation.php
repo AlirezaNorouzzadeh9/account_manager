@@ -11,10 +11,12 @@ class AddWireguardConversation extends Conversation
 {
     use Cancellable;
 
+    protected ?int $profileId = null;
     protected ?string $name = null;
 
-    public function start(Nutgram $bot): void
+    public function start(Nutgram $bot, int $profileId): void
     {
+        $this->profileId = $profileId;
         $bot->sendMessage('یک نام برای این کانفیگ وایرگارد بفرستید (مثلاً: eu1) یا /cancel را بزنید:');
         $this->next('receiveName');
     }
@@ -45,7 +47,11 @@ class AddWireguardConversation extends Conversation
             return;
         }
 
-        WireguardConfig::create(['name' => $this->name, 'config' => $config]);
+        WireguardConfig::create([
+            'name' => $this->name,
+            'config' => $config,
+            'wireguard_profile_id' => $this->profileId,
+        ]);
 
         $bot->sendMessage("✅ کانفیگ «{$this->name}» ذخیره شد.\nموقع نود کردن هر سرور، این کانفیگ هم روی آن فعال می‌شود.");
         $this->end();

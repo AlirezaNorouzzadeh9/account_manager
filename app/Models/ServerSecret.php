@@ -10,6 +10,7 @@ class ServerSecret extends Model
         'panel_id',
         'provider_server_id',
         'root_password',
+        'wireguard_profile_id',
     ];
 
     protected $casts = [
@@ -19,5 +20,10 @@ class ServerSecret extends Model
     public function panel()
     {
         return $this->belongsTo(Panel::class);
+    }
+
+    public function wireguardProfile()
+    {
+        return $this->belongsTo(WireguardProfile::class);
     }
 }

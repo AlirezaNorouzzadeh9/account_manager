@@ -60,7 +60,7 @@ class UpdateWireguardsJob implements ShouldQueue
         }
 
         try {
-            $result = $installer->updateWireguards($ip, 'root', $secret->root_password);
+            $result = $installer->updateWireguards($ip, 'root', $secret->root_password, $secret->wireguard_profile_id);
         } catch (RuntimeException $e) {
             if ($this->attempts() < $this->tries) {
                 $this->release(15);

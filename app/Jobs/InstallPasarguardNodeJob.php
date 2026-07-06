@@ -63,7 +63,7 @@ class InstallPasarguardNodeJob implements ShouldQueue
         }
 
         try {
-            $result = $installer->install($ip, 'root', $secret->root_password);
+            $result = $installer->install($ip, 'root', $secret->root_password, $secret->wireguard_profile_id);
         } catch (RuntimeException $e) {
             if ($this->attempts() < $this->tries) {
                 $this->release(15);

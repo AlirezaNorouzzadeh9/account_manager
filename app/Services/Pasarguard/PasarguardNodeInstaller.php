@@ -43,7 +43,7 @@ YAML;
     /**
      * @return array{success: bool, message: string, log: string}
      */
-    public function install(string $host, string $username, string $password): array
+    public function install(string $host, string $username, string $password, ?int $wireguardProfileId = null): array
     {
         $ssh = new SSH2($host, 22);
         $ssh->setTimeout(20);
@@ -53,7 +53,7 @@ YAML;
         }
 
         $log = '';
-        $wireguardConfigs = WireguardConfig::query()->oldest()->get();
+        $wireguardConfigs = $this->configsForProfile($wireguardProfileId);
 
         // A just-booted droplet may still be running its first-boot apt
         // operations (cloud-init), holding the dpkg lock — wait it out first,
@@ -145,7 +145,7 @@ YAML;
      *
      * @return array{success: bool, message: string, log: string}
      */
-    public function updateWireguards(string $host, string $username, string $password): array
+    public function updateWireguards(string $host, string $username, string $password, ?int $wireguardProfileId = null): array
     {
         $ssh = new SSH2($host, 22);
         $ssh->setTimeout(20);
@@ -154,7 +154,7 @@ YAML;
             throw new RuntimeException('اتصال SSH ناموفق بود (احتمالاً پسورد اشتباه است).');
         }
 
-        $configs = WireguardConfig::query()->oldest()->get();
+        $configs = $this->configsForProfile($wireguardProfileId);
 
         if ($configs->isNotEmpty()) {
             $this->ensureWireguardTools($ssh);
@@ -172,6 +172,20 @@ YAML;
                     : 'حداقل یکی از کانفیگ‌های وایرگارد فعال نشد.'),
             'log' => $log,
         ];
+    }
+
+    /**
+     * Configs belonging to the given WireGuard profile, or an empty
+     * collection when no profile is selected for this server (the "بدون
+     * وایرگارد" choice).
+     */
+    protected function configsForProfile(?int $wireguardProfileId): Collection
+    {
+        if ($wireguardProfileId === null) {
+            return collect();
+        }
+
+        return WireguardConfig::where('wireguard_profile_id', $wireguardProfileId)->oldest()->get();
     }
 
     /**

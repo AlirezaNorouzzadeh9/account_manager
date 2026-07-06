@@ -7,6 +7,7 @@ use App\Jobs\PollProviderActionJob;
 use App\Jobs\UpdateWireguardsJob;
 use App\Models\Panel;
 use App\Models\ServerSecret;
+use App\Models\WireguardProfile;
 use App\Services\Providers\DigitalOcean\DigitalOceanClient;
 use App\Services\Providers\ProviderClient;
 use App\Services\Providers\ProviderException;
@@ -26,6 +27,9 @@ class ServerListMenu extends InlineMenu
     protected int $page = 1;
     protected int|string|null $serverId = null;
     protected ?string $pendingImage = null;
+
+    /** 'none' or a numeric WireguardProfile id, chosen right before install/update-wireguards. */
+    protected ?string $pendingProfile = null;
 
     protected function panel(): Panel
     {
@@ -422,8 +426,39 @@ class ServerListMenu extends InlineMenu
         $this->renderServerDetail($bot);
     }
 
+    /**
+     * Adds one button per saved WireGuard profile plus a "بدون وایرگارد"
+     * skip option, each routed to $callback with the picked value as data
+     * ('none' or the profile id).
+     */
+    protected function addProfileButtons(string $callback): void
+    {
+        foreach (WireguardProfile::withCount('configs')->get() as $profile) {
+            $this->addButtonRow(InlineKeyboardButton::make(
+                "🔒 {$profile->name} ({$profile->configs_count})",
+                callback_data: "{$profile->id}@{$callback}"
+            ));
+        }
+
+        $this->addButtonRow(InlineKeyboardButton::make('🚫 بدون وایرگارد', callback_data: "none@{$callback}"));
+    }
+
     public function confirmInstallNode(Nutgram $bot): void
     {
+        $this->clearButtons();
+        $this->menuText(
+            "🧩 این کار داکر را (در صورت نبود) روی سرور نصب می‌کند و یک نود پاسارگارد بالا می‌آورد.\n".
+            'کدام پروفایل وایرگارد روی این سرور فعال شود؟'
+        );
+        $this->addProfileButtons('chooseInstallProfile');
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'));
+        $this->showMenu();
+    }
+
+    public function chooseInstallProfile(Nutgram $bot, string $data): void
+    {
+        $this->pendingProfile = $data;
+
         $hasSecret = ServerSecret::where('panel_id', $this->panelId)
             ->where('provider_server_id', $this->serverId)
             ->exists();
@@ -434,7 +469,12 @@ class ServerListMenu extends InlineMenu
                 'پسورد روت این سرور ذخیره نشده (احتمالاً قبل از این قابلیت ساخته شده یا دستی عوض شده).'
             );
             $this->end();
-            NodePasswordConversation::begin($bot, $bot->userId(), $bot->chatId(), [$this->panelId, $this->serverId]);
+            NodePasswordConversation::begin(
+                $bot,
+                $bot->userId(),
+                $bot->chatId(),
+                [$this->panelId, $this->serverId, 'install', $data]
+            );
             return;
         }
 
@@ -450,6 +490,10 @@ class ServerListMenu extends InlineMenu
 
     public function installNode(Nutgram $bot): void
     {
+        ServerSecret::where('panel_id', $this->panelId)
+            ->where('provider_server_id', $this->serverId)
+            ->update(['wireguard_profile_id' => $this->pendingProfile === 'none' ? null : (int) $this->pendingProfile]);
+
         InstallPasarguardNodeJob::dispatch($this->panelId, $this->serverId, $bot->chatId());
 
         $this->closeMenu('⏳ درخواست نود کردن سرور ثبت شد. به محض اتمام نتیجه را برایتان ارسال می‌کنم.');
@@ -457,6 +501,15 @@ class ServerListMenu extends InlineMenu
     }
 
     public function updateWireguards(Nutgram $bot): void
+    {
+        $this->clearButtons();
+        $this->menuText('کدام پروفایل وایرگارد روی این سرور فعال شود؟');
+        $this->addProfileButtons('chooseUpdateProfile');
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToServer'));
+        $this->showMenu();
+    }
+
+    public function chooseUpdateProfile(Nutgram $bot, string $data): void
     {
         $hasSecret = ServerSecret::where('panel_id', $this->panelId)
             ->where('provider_server_id', $this->serverId)
@@ -469,10 +522,14 @@ class ServerListMenu extends InlineMenu
                 $bot,
                 $bot->userId(),
                 $bot->chatId(),
-                [$this->panelId, $this->serverId, 'update_wireguards']
+                [$this->panelId, $this->serverId, 'update_wireguards', $data]
             );
             return;
         }
+
+        ServerSecret::where('panel_id', $this->panelId)
+            ->where('provider_server_id', $this->serverId)
+            ->update(['wireguard_profile_id' => $data === 'none' ? null : (int) $data]);
 
         UpdateWireguardsJob::dispatch($this->panelId, $this->serverId, $bot->chatId());
 

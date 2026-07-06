@@ -26,11 +26,14 @@ class WireguardSettingsTest extends TestCase
         $bot->hearText('/start')->reply();
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x')->reply(); // "وایرگاردها" (only x-prefixed button before cancel)
-        $bot->hearCallbackQueryData('x')->reply(); // "افزودن وایرگارد" (empty-list screen: only add + cancel)
+        $bot->hearCallbackQueryData('x')->reply(); // "افزودن پروفایل جدید" (empty-list screen: only add + cancel)
+        $bot->hearText('eu')->reply(); // profile name
+        $bot->hearCallbackQueryData('1')->reply(); // open the newly created profile
+        $bot->hearCallbackQueryData('x')->reply(); // "افزودن کانفیگ" (only add + delete-profile + back)
         $bot->hearText('eu1')->reply();
         $bot->hearText($wgConfig)->reply();
 
-        $this->assertDatabaseHas('wireguard_configs', ['name' => 'eu1']);
+        $this->assertDatabaseHas('wireguard_configs', ['name' => 'eu1', 'wireguard_profile_id' => 1]);
         $this->assertSame($wgConfig, WireguardConfig::first()->config);
     }
 
@@ -45,6 +48,9 @@ class WireguardSettingsTest extends TestCase
         $bot->hearText('/start')->reply();
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x')->reply();
+        $bot->hearCallbackQueryData('x')->reply();
+        $bot->hearText('eu')->reply(); // profile name
+        $bot->hearCallbackQueryData('1')->reply(); // open the newly created profile
         $bot->hearCallbackQueryData('x')->reply();
         $bot->hearText('bad1')->reply();
         $bot->hearText('this is not a wireguard config')->reply();
