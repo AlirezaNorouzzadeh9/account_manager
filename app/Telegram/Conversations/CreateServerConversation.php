@@ -7,6 +7,7 @@ use App\Services\Providers\ProviderException;
 use App\Services\Providers\ProviderManager;
 use App\Services\Providers\ServerProvisioningService;
 use App\Telegram\Support\Cancellable;
+use App\Telegram\Support\EditsInPlace;
 use App\Telegram\Support\GridButtons;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
@@ -15,6 +16,7 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 class CreateServerConversation extends InlineMenu
 {
     use Cancellable;
+    use EditsInPlace;
     use GridButtons;
 
     protected ?int $panelId = null;
@@ -29,6 +31,8 @@ class CreateServerConversation extends InlineMenu
 
     public function start(Nutgram $bot): void
     {
+        $this->editInPlaceFromCallback($bot);
+
         $panels = Panel::query()->active()->get();
 
         $this->clearButtons();

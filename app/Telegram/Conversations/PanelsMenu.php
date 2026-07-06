@@ -4,6 +4,7 @@ namespace App\Telegram\Conversations;
 
 use App\Models\Panel;
 use App\Telegram\Support\Cancellable;
+use App\Telegram\Support\EditsInPlace;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
@@ -11,9 +12,12 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 class PanelsMenu extends InlineMenu
 {
     use Cancellable;
+    use EditsInPlace;
 
     public function start(Nutgram $bot): void
     {
+        $this->editInPlaceFromCallback($bot);
+
         $panels = Panel::query()->latest()->get();
 
         $this->clearButtons();
