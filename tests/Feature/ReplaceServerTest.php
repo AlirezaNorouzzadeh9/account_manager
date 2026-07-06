@@ -74,7 +74,7 @@ class ReplaceServerTest extends TestCase
         $this->assertFalse($client->allNodesOk([]));
     }
 
-    public function test_final_report_adds_replace_button_only_when_ping_incomplete(): void
+    public function test_final_report_adds_replace_button_when_ping_incomplete(): void
     {
         Http::fake([
             'check-host.net/check-result/*' => Http::response([
@@ -95,7 +95,7 @@ class ReplaceServerTest extends TestCase
         $this->assertStringContainsString('replace_server:5:99', json_encode($body['reply_markup']));
     }
 
-    public function test_final_report_has_no_replace_button_when_ping_complete(): void
+    public function test_final_report_adds_replace_button_even_when_ping_complete(): void
     {
         Http::fake([
             'check-host.net/check-result/*' => Http::response([
@@ -113,7 +113,7 @@ class ReplaceServerTest extends TestCase
         [$request] = array_values(end($history));
         $body = json_decode((string) $request->getBody(), true);
 
-        $this->assertStringNotContainsString('replace_server:', json_encode($body['reply_markup']));
+        $this->assertStringContainsString('replace_server:5:100', json_encode($body['reply_markup']));
     }
 
     public function test_confirming_replace_creates_a_new_server_without_touching_the_old_one(): void

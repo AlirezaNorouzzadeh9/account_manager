@@ -44,16 +44,15 @@ class CreateServerFinalReportJob implements ShouldQueue
             return;
         }
 
-        $this->send($bot, $checkHost->formatResult($result), $checkHost->allNodesOk($result));
+        $this->send($bot, $checkHost->formatResult($result));
     }
 
     public function failed(?Throwable $exception): void
     {
-        // Never got a usable result at all — treat that the same as "not all nodes ok".
-        $this->send(app(Nutgram::class), 'نتیجه‌ی پینگ آماده نشد.', false);
+        $this->send(app(Nutgram::class), 'نتیجه‌ی پینگ آماده نشد.');
     }
 
-    protected function send(Nutgram $bot, string $pingSection, bool $pingWasComplete): void
+    protected function send(Nutgram $bot, string $pingSection): void
     {
         $message = "✅ سرور «{$this->hostname}» با موفقیت ساخته شد.\n".
             "🌐 آی‌پی: {$this->ip}\n\n".
@@ -63,16 +62,11 @@ class CreateServerFinalReportJob implements ShouldQueue
         $keyboard = null;
 
         if ($this->panelId && $this->serverId) {
-            $keyboard = InlineKeyboardMarkup::make()->addRow(
-                InlineKeyboardButton::make('🔍 مشاهده سرور', callback_data: "view_server:{$this->panelId}:{$this->serverId}")
-            );
-
-            if (! $pingWasComplete) {
-                $keyboard->addRow(InlineKeyboardButton::make(
-                    '🔄 تغییر سرور',
-                    callback_data: "replace_server:{$this->panelId}:{$this->serverId}"
-                ));
-            }
+            // Always offered, even on a clean ping — the user may still
+            // want a fresh IP/droplet for other reasons.
+            $keyboard = InlineKeyboardMarkup::make()
+                ->addRow(InlineKeyboardButton::make('🔍 مشاهده سرور', callback_data: "view_server:{$this->panelId}:{$this->serverId}"))
+                ->addRow(InlineKeyboardButton::make('🔄 تغییر سرور', callback_data: "replace_server:{$this->panelId}:{$this->serverId}"));
         }
 
         $bot->sendMessage($message, chat_id: $this->chatId, reply_markup: $keyboard);
