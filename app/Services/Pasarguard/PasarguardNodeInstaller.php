@@ -326,16 +326,30 @@ YAML;
 
     protected function ensureWireguardTools(SSH2 $ssh): string
     {
+        $log = '';
         $hasWg = trim($this->run($ssh, 'command -v wg-quick'));
 
-        if ($hasWg !== '') {
-            return '';
+        if ($hasWg === '') {
+            $log .= "\$ install wireguard-tools\n".$this->run(
+                $ssh,
+                'apt-get update -y >/dev/null 2>&1; apt-get install -y wireguard-tools 2>&1'
+            );
         }
 
-        return "\$ install wireguard-tools\n".$this->run(
-            $ssh,
-            'apt-get update -y >/dev/null 2>&1; apt-get install -y wireguard-tools 2>&1'
-        );
+        // wg-quick needs resolvconf to apply a config's DNS= line; without it,
+        // DNS just silently doesn't get set. Checked separately from wg-quick
+        // itself since a server provisioned before this existed may already
+        // have wireguard-tools but still be missing it.
+        $hasResolvconf = trim($this->run($ssh, 'command -v resolvconf'));
+
+        if ($hasResolvconf === '') {
+            $log .= "\$ install openresolv\n".$this->run(
+                $ssh,
+                'apt-get update -y >/dev/null 2>&1; apt-get install -y openresolv 2>&1'
+            );
+        }
+
+        return $log;
     }
 
     protected function buildEnvFile(bool $hasWireguard): string

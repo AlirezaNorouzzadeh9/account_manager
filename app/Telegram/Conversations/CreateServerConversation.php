@@ -199,7 +199,7 @@ class CreateServerConversation extends InlineMenu
             'ساخته شود؟'
         );
         $this->addButtonRow(InlineKeyboardButton::make('✅ بله، بساز', callback_data: 'yes@confirm'));
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToImages'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToImages'));
         $this->showMenu();
     }
 

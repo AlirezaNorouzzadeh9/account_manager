@@ -69,7 +69,7 @@ class CreateServerFinalReportJob implements ShouldQueue
 
             if (! $pingWasComplete) {
                 $keyboard->addRow(InlineKeyboardButton::make(
-                    '🔁 ساخت دوباره سرور (آی‌پی جدید)',
+                    '🔁 ساخت دوباره (IP جدید)',
                     callback_data: "recreate_server:{$this->panelId}:{$this->serverId}"
                 ));
             }

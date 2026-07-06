@@ -194,17 +194,28 @@ class ServerListMenu extends InlineMenu
             "💿 سیستم‌عامل: {$server['image']['distribution']} {$server['image']['name']}"
         );
 
+        // Power controls
         $this->addButtonGrid([
             InlineKeyboardButton::make('🔌 روشن کردن', callback_data: 'x@powerOn'),
             InlineKeyboardButton::make('⏻ خاموش کردن', callback_data: 'x@powerOff'),
             InlineKeyboardButton::make('🔁 ری‌استارت', callback_data: 'x@reboot'),
-            InlineKeyboardButton::make('📈 تغییر پلن (ریسایز)', callback_data: 'x@resizeMenu'),
+        ], perRow: 3);
+
+        // Server configuration
+        $this->addButtonGrid([
+            InlineKeyboardButton::make('📈 ریسایز', callback_data: 'x@resizeMenu'),
             InlineKeyboardButton::make('🧱 ریبیلد', callback_data: 'x@rebuildMenu'),
             InlineKeyboardButton::make('🌐 آی‌پی رزرو', callback_data: 'x@reservedIpMenu'),
-            InlineKeyboardButton::make('🧩 نود کردن به پاسارگارد', callback_data: 'x@confirmInstallNode'),
-            InlineKeyboardButton::make('🔄 بروزرسانی وایرگاردها', callback_data: 'x@updateWireguards'),
-            InlineKeyboardButton::make('🗑 حذف سرور', callback_data: 'x@confirmDeleteServer'),
+        ], perRow: 3);
+
+        // VPN node management
+        $this->addButtonGrid([
+            InlineKeyboardButton::make('🧩 نود پاسارگارد', callback_data: 'x@confirmInstallNode'),
+            InlineKeyboardButton::make('🔄 آپدیت وایرگارد', callback_data: 'x@updateWireguards'),
         ]);
+
+        // Danger zone, kept isolated so it can't be tapped by accident
+        $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف سرور', callback_data: 'x@confirmDeleteServer'));
 
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت به لیست', callback_data: 'x@backToList'));
         $this->showMenu();
@@ -376,7 +387,7 @@ class ServerListMenu extends InlineMenu
         $this->clearButtons();
         $this->menuText("آی‌پی رزرو فعلی سرور: {$current[0]['ip']}\nآیا می‌خواهید آن را با یک آی‌پی جدید جایگزین کنید؟");
         $this->addButtonRow(InlineKeyboardButton::make('✅ بله، جایگزین کن', callback_data: 'yes@replaceReservedIp'));
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToServer'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'));
         $this->showMenu();
     }
 
