@@ -16,6 +16,23 @@ class ServerProvisioningService
 {
     public function create(Panel $panel, string $hostname, string $region, string $size, string $image, int $chatId): void
     {
+        [$actionId, , $password] = $this->createSilently($panel, $hostname, $region, $size, $image);
+        $credentials = "👤 کاربر: root\n🔑 رمز عبور: {$password}";
+
+        if ($actionId) {
+            CreateServerReadyJob::dispatch($panel->id, $actionId, $chatId, $hostname, $credentials);
+        }
+    }
+
+    /**
+     * Like create(), but doesn't dispatch the normal "server ready" report —
+     * used by the replace-server flow (ReplaceServerConversation and its
+     * jobs), which polls/retries/finishes with its own logic instead.
+     *
+     * @return array{0: int|string|null, 1: int|string|null, 2: string} [action id, new server id, root password]
+     */
+    public function createSilently(Panel $panel, string $hostname, string $region, string $size, string $image): array
+    {
         $password = Str::password(20, symbols: false);
         $userData = "#cloud-config\nchpasswd:\n  expire: false\n  list: |\n    root:{$password}\nssh_pwauth: true\n";
 
@@ -31,7 +48,6 @@ class ServerProvisioningService
 
         $actionId = $result['links']['actions'][0]['id'] ?? null;
         $serverId = $result['droplet']['id'] ?? null;
-        $credentials = "👤 کاربر: root\n🔑 رمز عبور: {$password}";
 
         if ($serverId) {
             ServerSecret::updateOrCreate(
@@ -46,8 +62,6 @@ class ServerProvisioningService
             );
         }
 
-        if ($actionId) {
-            CreateServerReadyJob::dispatch($panel->id, $actionId, $chatId, $hostname, $credentials);
-        }
+        return [$actionId, $serverId, $password];
     }
 }

@@ -1,11 +1,13 @@
 <?php
 /** @var SergiX44\Nutgram\Nutgram $bot */
 
+use App\Models\Panel;
+use App\Services\Providers\ProviderManager;
 use App\Telegram\Conversations\AddPanelConversation;
 use App\Telegram\Conversations\CreateServerConversation;
 use App\Telegram\Conversations\NodePasswordConversation;
 use App\Telegram\Conversations\PanelsMenu;
-use App\Telegram\Conversations\RecreateServerConversation;
+use App\Telegram\Conversations\ReplaceServerConversation;
 use App\Telegram\Conversations\ServerListMenu;
 use App\Telegram\Conversations\SettingsMenu;
 use App\Telegram\Handlers\CancelCommand;
@@ -65,11 +67,36 @@ $bot->onCallbackQueryData(
 );
 
 $bot->onCallbackQueryData(
-    'recreate_server:{panelId}:{serverId}',
-    fn (Nutgram $bot, int $panelId, string $serverId) => RecreateServerConversation::begin(
+    'replace_server:{panelId}:{serverId}',
+    fn (Nutgram $bot, int $panelId, string $serverId) => ReplaceServerConversation::begin(
         $bot,
         $bot->userId(),
         $bot->chatId(),
         [$panelId, $serverId]
     )
+);
+
+// Fired only after ReplaceServerFinishJob confirms the replacement server's
+// node/WireGuard setup is done — the old server is deleted here, and only here.
+$bot->onCallbackQueryData(
+    'delete_old_server:{panelId}:{serverId}',
+    function (Nutgram $bot, int $panelId, string $serverId) {
+        $panel = Panel::find($panelId);
+
+        if (! $panel) {
+            $bot->sendMessage('این پنل دیگر وجود ندارد.', chat_id: $bot->chatId());
+
+            return;
+        }
+
+        try {
+            ProviderManager::forPanel($panel)->deleteServer($serverId);
+        } catch (\Throwable $e) {
+            $bot->sendMessage("❌ حذف سرور قبلی ناموفق بود:\n{$e->getMessage()}", chat_id: $bot->chatId());
+
+            return;
+        }
+
+        $bot->sendMessage('🗑 سرور قبلی حذف شد.', chat_id: $bot->chatId());
+    }
 );
