@@ -3,13 +3,11 @@
 namespace App\Telegram\Conversations;
 
 use App\Models\Panel;
-use App\Models\ServerSecret;
-use App\Jobs\CreateServerReadyJob;
 use App\Services\Providers\ProviderException;
 use App\Services\Providers\ProviderManager;
+use App\Services\Providers\ServerProvisioningService;
 use App\Telegram\Support\Cancellable;
 use App\Telegram\Support\GridButtons;
-use Illuminate\Support\Str;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
@@ -213,45 +211,20 @@ class CreateServerConversation extends InlineMenu
     public function confirm(Nutgram $bot): void
     {
         $panel = Panel::findOrFail($this->panelId);
-        $password = Str::password(20, symbols: false);
-
-        $userData = "#cloud-config\nchpasswd:\n  expire: false\n  list: |\n    root:{$password}\nssh_pwauth: true\n";
 
         try {
-            $result = ProviderManager::forPanel($panel)->createServer([
-                'name' => $this->hostname,
-                'region' => $this->region,
-                'size' => $this->size,
-                'image' => $this->image,
-                'monitoring' => true,
-                'ipv6' => true,
-                'user_data' => $userData,
-            ]);
+            app(ServerProvisioningService::class)->create(
+                $panel,
+                $this->hostname,
+                $this->region,
+                $this->size,
+                $this->image,
+                $bot->chatId(),
+            );
         } catch (ProviderException $e) {
             $this->closeMenu("❌ ساخت سرور ناموفق بود:\n{$e->getMessage()}");
             $this->end();
             return;
-        }
-
-        $actionId = $result['links']['actions'][0]['id'] ?? null;
-        $serverId = $result['droplet']['id'] ?? null;
-        $credentials = "👤 کاربر: root\n🔑 رمز عبور: {$password}";
-
-        if ($serverId) {
-            ServerSecret::updateOrCreate(
-                ['panel_id' => $panel->id, 'provider_server_id' => $serverId],
-                ['root_password' => $password]
-            );
-        }
-
-        if ($actionId) {
-            CreateServerReadyJob::dispatch(
-                $panel->id,
-                $actionId,
-                $bot->chatId(),
-                $this->hostname,
-                $credentials,
-            );
         }
 
         $this->closeMenu(

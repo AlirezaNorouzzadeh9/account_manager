@@ -44,26 +44,36 @@ class CreateServerFinalReportJob implements ShouldQueue
             return;
         }
 
-        $this->send($bot, $checkHost->formatResult($result));
+        $this->send($bot, $checkHost->formatResult($result), $checkHost->allNodesOk($result));
     }
 
     public function failed(?Throwable $exception): void
     {
-        $this->send(app(Nutgram::class), 'نتیجه‌ی پینگ آماده نشد.');
+        // Never got a usable result at all — treat that the same as "not all nodes ok".
+        $this->send(app(Nutgram::class), 'نتیجه‌ی پینگ آماده نشد.', false);
     }
 
-    protected function send(Nutgram $bot, string $pingSection): void
+    protected function send(Nutgram $bot, string $pingSection, bool $pingWasComplete): void
     {
         $message = "✅ سرور «{$this->hostname}» با موفقیت ساخته شد.\n".
             "🌐 آی‌پی: {$this->ip}\n\n".
             "{$this->credentials}\n\n".
             "📡 پینگ از ایران:\n{$pingSection}";
 
-        $keyboard = ($this->panelId && $this->serverId)
-            ? InlineKeyboardMarkup::make()->addRow(
+        $keyboard = null;
+
+        if ($this->panelId && $this->serverId) {
+            $keyboard = InlineKeyboardMarkup::make()->addRow(
                 InlineKeyboardButton::make('🔍 مشاهده سرور', callback_data: "view_server:{$this->panelId}:{$this->serverId}")
-            )
-            : null;
+            );
+
+            if (! $pingWasComplete) {
+                $keyboard->addRow(InlineKeyboardButton::make(
+                    '🔁 ساخت دوباره سرور (آی‌پی جدید)',
+                    callback_data: "recreate_server:{$this->panelId}:{$this->serverId}"
+                ));
+            }
+        }
 
         $bot->sendMessage($message, chat_id: $this->chatId, reply_markup: $keyboard);
     }

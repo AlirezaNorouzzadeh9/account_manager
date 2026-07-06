@@ -93,4 +93,26 @@ class CheckHostClient
 
         return $lines === [] ? 'No ping result received.' : implode("\n", $lines);
     }
+
+    /**
+     * @param array $data as returned by getResult()
+     * True only if every probed node had at least one successful ping.
+     */
+    public function allNodesOk(array $data): bool
+    {
+        if (empty($data)) {
+            return false;
+        }
+
+        foreach ($data as $pings) {
+            $samples = $pings[0] ?? [];
+            $ok = array_filter($samples, fn ($s) => ($s[0] ?? null) === 'OK');
+
+            if (empty($ok)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

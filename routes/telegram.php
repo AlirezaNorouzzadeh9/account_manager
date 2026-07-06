@@ -5,6 +5,7 @@ use App\Telegram\Conversations\AddPanelConversation;
 use App\Telegram\Conversations\CreateServerConversation;
 use App\Telegram\Conversations\NodePasswordConversation;
 use App\Telegram\Conversations\PanelsMenu;
+use App\Telegram\Conversations\RecreateServerConversation;
 use App\Telegram\Conversations\ServerListMenu;
 use App\Telegram\Conversations\SettingsMenu;
 use App\Telegram\Handlers\CancelCommand;
@@ -60,5 +61,15 @@ $bot->onCallbackQueryData(
         $bot->userId(),
         $bot->chatId(),
         [$panelId, $serverId, 'update_wireguards']
+    )
+);
+
+$bot->onCallbackQueryData(
+    'recreate_server:{panelId}:{serverId}',
+    fn (Nutgram $bot, int $panelId, string $serverId) => RecreateServerConversation::begin(
+        $bot,
+        $bot->userId(),
+        $bot->chatId(),
+        [$panelId, $serverId]
     )
 );

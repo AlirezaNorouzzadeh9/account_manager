@@ -10,9 +10,10 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 
 /**
  * Manages WireGuard profiles (named groups of configs, e.g. "پروفایل ۱" =
- * Italy+Netherlands) and the individual configs inside them. A server only
- * ever gets ONE profile's configs applied (chosen from ServerListMenu at
- * install/update time), never every saved config at once.
+ * Italy+Netherlands). Configs are added once, unassigned, from the top-level
+ * menu; a profile's screen then lets you pick which existing configs belong
+ * to it. Each config can only be in one profile at a time — picking it for
+ * profile B automatically pulls it out of wherever it was.
  */
 class WireguardMenu extends InlineMenu
 {
@@ -28,7 +29,7 @@ class WireguardMenu extends InlineMenu
         $this->clearButtons();
 
         if ($profiles->isEmpty() && $unassignedCount === 0) {
-            $this->menuText("هیچ پروفایل وایرگاردی نساخته‌اید.\nموقع نود کردن یا بروزرسانی هر سرور، یکی از پروفایل‌ها انتخاب می‌شود.");
+            $this->menuText("هیچ کانفیگ یا پروفایل وایرگاردی نساخته‌اید.\nاول چند کانفیگ اضافه کنید، بعد یک پروفایل بسازید و کانفیگ‌های موردنظر را برایش انتخاب کنید.");
         } else {
             $this->menuText("پروفایل‌های وایرگارد:\n(موقع نود کردن/بروزرسانی هر سرور، فقط کانفیگ‌های همان پروفایل روی آن فعال می‌شوند)");
 
@@ -47,6 +48,7 @@ class WireguardMenu extends InlineMenu
             }
         }
 
+        $this->addButtonRow(InlineKeyboardButton::make('➕ افزودن وایرگارد', callback_data: 'x@addConfigTopLevel'));
         $this->addButtonRow(InlineKeyboardButton::make('➕ افزودن پروفایل جدید', callback_data: 'x@addProfile'));
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToSettings'));
         $this->showMenu();
@@ -57,6 +59,13 @@ class WireguardMenu extends InlineMenu
         $this->closeMenu();
         $this->end();
         SettingsMenu::begin($bot);
+    }
+
+    public function addConfigTopLevel(Nutgram $bot): void
+    {
+        $this->closeMenu();
+        $this->end();
+        AddWireguardConversation::begin($bot);
     }
 
     public function addProfile(Nutgram $bot): void
@@ -116,7 +125,7 @@ class WireguardMenu extends InlineMenu
         }
 
         if (! $isUnassignedBucket) {
-            $this->addButtonRow(InlineKeyboardButton::make('➕ افزودن کانفیگ', callback_data: 'x@addConfig'));
+            $this->addButtonRow(InlineKeyboardButton::make('🧩 انتخاب کانفیگ‌ها', callback_data: 'x@selectConfigs'));
             $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف پروفایل', callback_data: 'x@confirmDeleteProfile'));
         }
 
@@ -124,13 +133,64 @@ class WireguardMenu extends InlineMenu
         $this->showMenu();
     }
 
-    public function addConfig(Nutgram $bot): void
+    /**
+     * Lets the admin toggle every saved config in/out of the CURRENT profile.
+     * A config already in another profile shows which one; tapping it moves
+     * it here instead (a config is never in more than one profile).
+     */
+    public function selectConfigs(Nutgram $bot): void
     {
-        $profileId = (int) $this->currentProfile;
+        $this->renderConfigSelector($bot);
+    }
 
-        $this->closeMenu();
-        $this->end();
-        AddWireguardConversation::begin($bot, $bot->userId(), $bot->chatId(), [$profileId]);
+    protected function renderConfigSelector(Nutgram $bot): void
+    {
+        $profile = WireguardProfile::find((int) $this->currentProfile);
+
+        if (! $profile) {
+            $this->start($bot);
+            return;
+        }
+
+        $configs = WireguardConfig::with('profile')->orderBy('name')->get();
+
+        $this->clearButtons();
+        $this->menuText(
+            "کانفیگ‌های پروفایل «{$profile->name}» را انتخاب کنید:\n".
+            'هر کانفیگ فقط می‌تواند عضو یک پروفایل باشد؛ با زدن روی هرکدام آن را وارد یا خارج از این پروفایل می‌کنید.'
+        );
+
+        if ($configs->isEmpty()) {
+            $this->menuText('هیچ کانفیگ وایرگاردی وجود ندارد. ابتدا از منوی قبل یکی اضافه کنید.');
+        }
+
+        foreach ($configs as $config) {
+            $inThisProfile = $config->wireguard_profile_id === $profile->id;
+            $mark = $inThisProfile ? '✅' : '⬜';
+            $elsewhere = (! $inThisProfile && $config->profile) ? " ({$config->profile->name})" : '';
+
+            $this->addButtonRow(InlineKeyboardButton::make(
+                "{$mark} {$config->name}{$elsewhere}",
+                callback_data: "{$config->id}@toggleConfigInProfile"
+            ));
+        }
+
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToProfile'));
+        $this->showMenu();
+    }
+
+    public function toggleConfigInProfile(Nutgram $bot, string $data): void
+    {
+        $profile = WireguardProfile::find((int) $this->currentProfile);
+        $config = WireguardConfig::find((int) $data);
+
+        if ($profile && $config) {
+            $config->update([
+                'wireguard_profile_id' => $config->wireguard_profile_id === $profile->id ? null : $profile->id,
+            ]);
+        }
+
+        $this->renderConfigSelector($bot);
     }
 
     public function confirmDeleteProfile(Nutgram $bot): void
@@ -183,14 +243,8 @@ class WireguardMenu extends InlineMenu
         $this->clearButtons();
         $this->menuText("نام: {$config->name}\nپروفایل: ".($config->profile->name ?? 'بدون پروفایل'));
         $this->addButtonRow(InlineKeyboardButton::make('👁 نمایش کانفیگ', callback_data: 'x@revealConfig'));
-        $this->addButtonRow(InlineKeyboardButton::make('🔀 انتقال به پروفایل دیگر', callback_data: 'x@moveConfigMenu'));
-
-        if ($config->wireguard_profile_id !== null) {
-            $this->addButtonRow(InlineKeyboardButton::make('⛔ حذف از این پروفایل', callback_data: 'x@unassignConfig'));
-        }
-
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف کامل کانفیگ', callback_data: 'x@confirmDeleteConfig'));
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToProfile'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToConfig'));
         $this->showMenu();
     }
 
@@ -203,35 +257,6 @@ class WireguardMenu extends InlineMenu
         }
 
         $this->setCallbackQueryOptions(['text' => 'کانفیگ در پیام بعدی فرستاده شد.']);
-    }
-
-    public function moveConfigMenu(Nutgram $bot): void
-    {
-        $profiles = WireguardProfile::where('id', '!=', (int) ($this->currentProfile === 'none' ? 0 : $this->currentProfile))->get();
-
-        $this->clearButtons();
-        $this->menuText('این کانفیگ به کدام پروفایل منتقل شود؟');
-
-        foreach ($profiles as $profile) {
-            $this->addButtonRow(InlineKeyboardButton::make($profile->name, callback_data: "{$profile->id}@doMoveConfig"));
-        }
-
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToConfig'));
-        $this->showMenu();
-    }
-
-    public function doMoveConfig(Nutgram $bot, string $data): void
-    {
-        WireguardConfig::whereKey($this->currentConfigId)->update(['wireguard_profile_id' => (int) $data]);
-        $this->setCallbackQueryOptions(['text' => 'کانفیگ منتقل شد.']);
-        $this->renderProfile($bot);
-    }
-
-    public function unassignConfig(Nutgram $bot): void
-    {
-        WireguardConfig::whereKey($this->currentConfigId)->update(['wireguard_profile_id' => null]);
-        $this->setCallbackQueryOptions(['text' => 'از پروفایل حذف شد.']);
-        $this->renderProfile($bot);
     }
 
     public function backToConfig(Nutgram $bot): void

@@ -11,6 +11,10 @@ class ServerSecret extends Model
         'provider_server_id',
         'root_password',
         'wireguard_profile_id',
+        'region',
+        'size',
+        'image',
+        'hostname',
     ];
 
     protected $casts = [
