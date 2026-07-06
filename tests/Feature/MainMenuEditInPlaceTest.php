@@ -28,16 +28,25 @@ class MainMenuEditInPlaceTest extends TestCase
         return $bot;
     }
 
-    /** @return array{path: string, body: array} */
+    /**
+     * The last history entry after a callback tap is often the automatic
+     * answerCallbackQuery (no "text" field) — find the last sendMessage/
+     * editMessageText call instead.
+     *
+     * @return array{path: string, body: array}
+     */
     protected function lastRequest(FakeNutgram $bot): array
     {
-        $history = $bot->getRequestHistory();
-        [$request] = array_values(end($history));
+        foreach (array_reverse($bot->getRequestHistory()) as $item) {
+            [$request] = array_values($item);
+            $body = json_decode((string) $request->getBody(), true);
 
-        return [
-            'path' => $request->getUri()->getPath(),
-            'body' => json_decode((string) $request->getBody(), true),
-        ];
+            if (isset($body['text'])) {
+                return ['path' => $request->getUri()->getPath(), 'body' => $body];
+            }
+        }
+
+        return ['path' => '', 'body' => []];
     }
 
     public function test_tapping_panels_menu_edits_the_start_message_instead_of_sending_a_new_one(): void
@@ -82,5 +91,28 @@ class MainMenuEditInPlaceTest extends TestCase
         $this->assertStringContainsString('editMessageText', $path);
         $this->assertArrayHasKey('message_id', $body);
         $this->assertStringContainsString('تنظیمات', $body['text']);
+    }
+
+    public function test_back_button_edits_message_back_to_main_menu_instead_of_delete_and_resend(): void
+    {
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('panels:menu')->reply();
+        // PanelsMenu has two "x"-prefixed buttons: "➕ افزودن پنل" claims "x",
+        // so "🔙 بازگشت" collides and becomes "x@".
+        $bot->hearCallbackQueryData('x@')->reply(); // "🔙 بازگشت" -> Cancellable::cancel()
+
+        $history = $bot->getRequestHistory();
+        $paths = array_map(fn ($item) => array_values($item)[0]->getUri()->getPath(), $history);
+
+        $this->assertNotContains(true, array_map(fn ($p) => str_contains($p, 'deleteMessage'), $paths));
+        $this->assertTrue(collect($paths)->contains(fn ($p) => str_contains($p, 'editMessageText')));
+
+        ['path' => $path, 'body' => $body] = $this->lastRequest($bot);
+        $this->assertStringContainsString('editMessageText', $path);
+        $this->assertArrayHasKey('message_id', $body);
+        $this->assertStringContainsString('یکی از گزینه‌های زیر را انتخاب کنید', $body['text']);
     }
 }

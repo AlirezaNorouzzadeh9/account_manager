@@ -14,7 +14,27 @@ trait Cancellable
 {
     public function cancel(Nutgram $bot): void
     {
+        $messageId = $this->messageId;
+        $chatId = $this->chatId;
+
+        // Null these out before end() so InlineMenu::closing() doesn't delete
+        // the message — we're about to edit it into the main menu instead.
+        $this->messageId = null;
+        $this->chatId = null;
+
         $this->end();
+
+        if ($messageId && $chatId) {
+            $bot->editMessageText(
+                text: StartCommand::text(),
+                chat_id: $chatId,
+                message_id: $messageId,
+                reply_markup: StartCommand::keyboard(),
+            );
+
+            return;
+        }
+
         (new StartCommand())($bot);
     }
 }
