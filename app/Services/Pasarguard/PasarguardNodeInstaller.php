@@ -22,11 +22,17 @@ use Throwable;
  * IP. Only API_KEY is a fixed shared secret across every node (see
  * config/pasarguard.php).
  *
- * If config/dns.php's Cloudflare credentials are set, this instead points
- * the node at a DNS subdomain (e.g. "srv-1.node.pcbot.top" → the node's IP)
- * and uses ONE fixed self-signed wildcard cert for every node — the panel
- * then connects by that domain name, which the wildcard SAN always covers,
- * so the same cert genuinely works everywhere.
+ * If config/dns.php's Cloudflare credentials are set AND a WireGuard
+ * profile is assigned to this server, this instead points the node at a
+ * DNS subdomain named after that PROFILE (e.g. "germany.node.pcbot.top" →
+ * the node's IP) and uses ONE fixed self-signed wildcard cert for every
+ * node — the panel then connects by that domain name, which the wildcard
+ * SAN always covers, so the same cert genuinely works everywhere. Naming
+ * the subdomain after the profile rather than the server means the domain
+ * follows that identity even if the underlying server is later replaced
+ * (see ReplaceServerFinishJob). A server with no profile assigned has no
+ * stable identity to hang a domain off of, so it always gets the classic
+ * per-IP cert instead.
  */
 class PasarguardNodeInstaller
 {
@@ -68,7 +74,7 @@ YAML;
         string $username,
         string $password,
         ?string $wireguardPrivateKey = null,
-        ?string $hostname = null,
+        ?string $wireguardProfileName = null,
     ): array {
         $ssh = new SSH2($host, 22);
         $ssh->setTimeout(20);
@@ -112,7 +118,7 @@ YAML;
 
         $this->writeRemoteFile($ssh, self::REMOTE_DIR.'/docker-compose.yml', self::COMPOSE_YAML);
         $this->writeRemoteFile($ssh, self::REMOTE_DIR.'/node-1/.env', $this->buildEnvFile($wireguardConfigs->isNotEmpty()));
-        [$certLog, $certContent, $domain, $dnsWarning] = $this->setUpCertificate($ssh, $host, $hostname);
+        [$certLog, $certContent, $domain, $dnsWarning] = $this->setUpCertificate($ssh, $host, $wireguardProfileName);
         $log .= $certLog;
 
         // A fresh droplet's network/DNS can still be settling right after boot
@@ -324,20 +330,20 @@ YAML;
 
     /**
      * Decides which certificate strategy to use for this node: a DNS-backed
-     * fixed wildcard cert (if Cloudflare credentials + a hostname are
-     * available) or the classic per-node, IP-bound one otherwise.
+     * fixed wildcard cert (if Cloudflare credentials + a WireGuard profile
+     * are available) or the classic per-node, IP-bound one otherwise.
      *
      * @return array{0: string, 1: string, 2: ?string, 3: ?string} [log excerpt, cert PEM content, domain used (if any), DNS failure warning (if any)]
      */
-    protected function setUpCertificate(SSH2 $ssh, string $ip, ?string $hostname): array
+    protected function setUpCertificate(SSH2 $ssh, string $ip, ?string $wireguardProfileName): array
     {
-        if ($hostname === null || ! $this->dnsConfigured()) {
+        if ($wireguardProfileName === null || ! $this->dnsConfigured()) {
             [$log, $cert] = $this->generateNodeCertificate($ssh, $ip);
 
             return [$log, $cert, null, null];
         }
 
-        $domain = "{$hostname}.".config('dns.cloudflare.node_domain');
+        $domain = "{$wireguardProfileName}.".config('dns.cloudflare.node_domain');
 
         try {
             $this->dnsClient()->upsertARecord($domain, $ip);

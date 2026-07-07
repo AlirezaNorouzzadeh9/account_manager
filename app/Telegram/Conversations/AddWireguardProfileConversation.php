@@ -8,16 +8,24 @@ use App\Telegram\Support\CancellableTextStep;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 
+/**
+ * A profile's name doubles as its DNS subdomain label (e.g. "germany" ->
+ * germany.node.pcbot.top — see PasarguardNodeInstaller), so it's restricted
+ * to valid DNS-label characters at creation time rather than silently
+ * sanitized later, so what the admin sees is exactly what gets registered.
+ */
 class AddWireguardProfileConversation extends Conversation
 {
     use Cancellable;
     use CancellableTextStep;
 
+    protected const NAME_PATTERN = '/^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$/';
+
     protected ?string $name = null;
 
     public function start(Nutgram $bot): void
     {
-        $bot->sendMessage('یک نام برای این پروفایل بفرستید (مثلاً: server-1):', reply_markup: $this->backButton());
+        $bot->sendMessage('یک نام برای این پروفایل بفرستید (مثلاً: germany):', reply_markup: $this->backButton());
         $this->next('receiveName');
     }
 
@@ -31,8 +39,11 @@ class AddWireguardProfileConversation extends Conversation
 
         $name = trim((string) $bot->message()?->text);
 
-        if ($name === '' || mb_strlen($name) > 50) {
-            $bot->sendMessage('نام نامعتبر است. دوباره ارسال کنید:', reply_markup: $this->backButton());
+        if (! preg_match(self::NAME_PATTERN, $name)) {
+            $bot->sendMessage(
+                'نام نامعتبر است (فقط حروف انگلیسی، عدد و خط‌تیره مجاز است، چون این نام زیردامنه‌ی نود هم می‌شود). دوباره ارسال کنید:',
+                reply_markup: $this->backButton()
+            );
             return;
         }
 

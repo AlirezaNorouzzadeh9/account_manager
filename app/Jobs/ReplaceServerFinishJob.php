@@ -52,13 +52,13 @@ class ReplaceServerFinishJob implements ShouldQueue
         // Keep the same WireGuard profile as the old server going forward
         // (e.g. for a later manual "🔄 بروزرسانی وایرگاردها").
         $newSecret->update(['wireguard_profile_id' => $this->wireguardProfileId]);
-        $privateKey = $newSecret->wireguardProfile?->private_key;
+        $profile = $newSecret->wireguardProfile;
 
         $domain = null;
         $dnsWarning = null;
 
         try {
-            $result = $installer->install($this->newIp, 'root', $newSecret->root_password, $privateKey, $newSecret->hostname);
+            $result = $installer->install($this->newIp, 'root', $newSecret->root_password, $profile?->private_key, $profile?->name);
             $statusMessage = ($result['success'] ? '✅ ' : '⚠️ ').$result['message'];
             $domain = $result['domain'] ?? null;
             $dnsWarning = $result['dns_warning'] ?? null;
