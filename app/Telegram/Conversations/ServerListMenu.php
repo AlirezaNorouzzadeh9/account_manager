@@ -222,6 +222,13 @@ class ServerListMenu extends InlineMenu
             InlineKeyboardButton::make('🔄 آپدیت وایرگارد', callback_data: 'x@updateWireguards'),
         ]);
 
+        // Builds a fresh server with the same specs (+ same node/WireGuard
+        // profile if any) and auto-deletes this one once it's confirmed
+        // working — kept on its own row since it's a bigger action than the
+        // rest, but separate from the danger zone since it isn't destructive
+        // to THIS server until the replacement is verified.
+        $this->addButtonRow(InlineKeyboardButton::make('🔄 تغییر سرور', callback_data: 'x@replaceServer'));
+
         // Danger zone, kept isolated so it can't be tapped by accident
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف سرور', callback_data: 'x@confirmDeleteServer'));
 
@@ -562,6 +569,13 @@ class ServerListMenu extends InlineMenu
 
         $this->setCallbackQueryOptions(['text' => 'درخواست بروزرسانی وایرگاردها ثبت شد.']);
         $this->renderServerDetail($bot);
+    }
+
+    public function replaceServer(Nutgram $bot): void
+    {
+        $this->closeMenu();
+        $this->end();
+        ReplaceServerConversation::begin($bot, $bot->userId(), $bot->chatId(), [$this->panelId, $this->serverId]);
     }
 
     public function confirmDeleteServer(Nutgram $bot): void

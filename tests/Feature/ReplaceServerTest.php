@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Jobs\CheckServerPingJob;
 use App\Jobs\CreateServerFinalReportJob;
 use App\Jobs\CreateServerReadyJob;
+use App\Jobs\DeleteOldServerJob;
 use App\Jobs\ReplaceServerFinishJob;
 use App\Jobs\ReplaceServerPingCheckJob;
 use App\Jobs\ReplaceServerPollJob;
@@ -312,8 +313,10 @@ class ReplaceServerTest extends TestCase
         $this->assertStringContainsString('بعد از', $body['text']);
     }
 
-    public function test_finish_job_applies_wireguard_profile_and_sends_delete_confirmation(): void
+    public function test_finish_job_applies_wireguard_profile_and_schedules_auto_delete_on_success(): void
     {
+        Queue::fake();
+
         [$panel, ] = $this->makePanelAndSecret(111);
         $profile = WireguardProfile::create(['name' => 'Profile 1', 'private_key' => 'fake-private-key']);
 
@@ -347,7 +350,98 @@ class ReplaceServerTest extends TestCase
         $body = json_decode((string) $request->getBody(), true);
 
         $this->assertStringContainsString('نصب و اجرا شد', $body['text']);
+        $this->assertStringContainsString('خودکار حذف', $body['text']);
+        $this->assertStringNotContainsString("delete_old_server:{$panel->id}:111", json_encode($body['reply_markup']));
+
+        Queue::assertPushed(DeleteOldServerJob::class, function ($job) use ($panel) {
+            return $this->prop($job, 'panelId') === $panel->id
+                && $this->prop($job, 'serverId') === '111';
+        });
+    }
+
+    public function test_finish_job_keeps_manual_delete_confirmation_when_install_fails(): void
+    {
+        Queue::fake();
+
+        [$panel, ] = $this->makePanelAndSecret(111);
+        $profile = WireguardProfile::create(['name' => 'Profile 1', 'private_key' => 'fake-private-key']);
+
+        ServerSecret::create([
+            'panel_id' => $panel->id,
+            'provider_server_id' => 222,
+            'root_password' => 'new-password',
+            'region' => 'nyc1',
+            'size' => 's-1vcpu-1gb',
+            'image' => 'ubuntu-24-04-x64',
+            'hostname' => 'srv-old',
+        ]);
+
+        $installer = \Mockery::mock(PasarguardNodeInstaller::class);
+        $installer->shouldReceive('install')
+            ->once()
+            ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key', 'Profile 1')
+            ->andReturn(['success' => false, 'message' => 'نصب نود ناموفق بود.', 'log' => 'boom', 'cert' => '', 'domain' => null, 'dns_warning' => null]);
+        $this->app->instance(PasarguardNodeInstaller::class, $installer);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        $job = new ReplaceServerFinishJob($panel->id, '111', '222', '9.9.9.9', $profile->id, $bot->chatId() ?? 1);
+        $job->handle($bot, $this->app->make(PasarguardNodeInstaller::class));
+
+        $history = $bot->getRequestHistory();
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+
+        $this->assertStringContainsString('ناموفق بود', $body['text']);
         $this->assertStringContainsString("delete_old_server:{$panel->id}:111", json_encode($body['reply_markup']));
+
+        Queue::assertNotPushed(DeleteOldServerJob::class);
+    }
+
+    public function test_delete_old_server_job_deletes_the_server_and_notifies(): void
+    {
+        [$panel, ] = $this->makePanelAndSecret(111);
+
+        Http::fake([
+            'api.digitalocean.com/v2/droplets/111' => Http::response([], 204),
+        ]);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        $job = new DeleteOldServerJob($panel->id, '111', $bot->chatId() ?? 1);
+        $job->handle($bot);
+
+        Http::assertSent(fn ($request) => $request->method() === 'DELETE'
+            && str_contains((string) $request->url(), '/droplets/111'));
+
+        $history = $bot->getRequestHistory();
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+
+        $this->assertStringContainsString('خودکار حذف شد', $body['text']);
+    }
+
+    public function test_delete_old_server_job_reports_provider_failure(): void
+    {
+        [$panel, ] = $this->makePanelAndSecret(111);
+
+        Http::fake([
+            'api.digitalocean.com/v2/droplets/111' => Http::response(['message' => 'not found'], 404),
+        ]);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        $job = new DeleteOldServerJob($panel->id, '111', $bot->chatId() ?? 1);
+        $job->handle($bot);
+
+        $history = $bot->getRequestHistory();
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+
+        $this->assertStringContainsString('ناموفق بود', $body['text']);
     }
 
     public function test_delete_old_server_route_deletes_the_old_server(): void

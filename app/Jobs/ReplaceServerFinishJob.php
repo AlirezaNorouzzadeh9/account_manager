@@ -15,9 +15,11 @@ use Throwable;
 
 /**
  * The replacement droplet's ping came back clean — re-applies the PasarGuard
- * node + the old server's WireGuard profile onto it, then asks the user to
- * confirm deleting the old one. The old server is left completely alone
- * until that explicit confirmation (see the "delete_old_server" route).
+ * node + the old server's WireGuard profile onto it. If that succeeds, the
+ * old server is automatically deleted 5 minutes later (DeleteOldServerJob),
+ * giving the admin a short window to notice a problem first. If it
+ * doesn't succeed, nothing is deleted automatically — a manual confirm
+ * button is shown instead (see the "delete_old_server" route).
  */
 class ReplaceServerFinishJob implements ShouldQueue
 {
@@ -56,26 +58,37 @@ class ReplaceServerFinishJob implements ShouldQueue
 
         $domain = null;
         $dnsWarning = null;
+        $succeeded = false;
 
         try {
             $result = $installer->install($this->newIp, 'root', $newSecret->root_password, $profile?->private_key, $profile?->name);
             $statusMessage = ($result['success'] ? '✅ ' : '⚠️ ').$result['message'];
             $domain = $result['domain'] ?? null;
             $dnsWarning = $result['dns_warning'] ?? null;
+            $succeeded = $result['success'];
         } catch (Throwable $e) {
             $statusMessage = "⚠️ سرور جایگزین ساخته شد ولی نصب نود ناموفق بود:\n{$e->getMessage()}\n".
                 'می‌توانید بعداً دستی از «اطلاعات سرور» نود کنید.';
         }
 
-        $keyboard = InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make(
-                '🔍 مشاهده سرور جدید',
-                callback_data: "view_server:{$this->oldPanelId}:{$this->newServerId}"
-            ))
-            ->addRow(InlineKeyboardButton::make(
+        $keyboard = InlineKeyboardMarkup::make()->addRow(InlineKeyboardButton::make(
+            '🔍 مشاهده سرور جدید',
+            callback_data: "view_server:{$this->oldPanelId}:{$this->newServerId}"
+        ));
+
+        if ($succeeded) {
+            // Give the admin a short window to notice a problem before the
+            // old server is gone for good, rather than deleting instantly.
+            DeleteOldServerJob::dispatch($this->oldPanelId, $this->oldServerId, $this->chatId)
+                ->delay(now()->addMinutes(5));
+            $oldServerLine = '⏳ سرور قبلی تا ۵ دقیقه‌ی دیگر به‌صورت خودکار حذف می‌شود. اگر مشکلی می‌بینید همین حالا از «سرورهای من» بررسی کنید.';
+        } else {
+            $keyboard->addRow(InlineKeyboardButton::make(
                 '🗑 بله، سرور قبلی حذف شود',
                 callback_data: "delete_old_server:{$this->oldPanelId}:{$this->oldServerId}"
             ));
+            $oldServerLine = 'سرور قبلی هنوز حذف نشده. اگر همه چیز روی سرور جدید مرتب است، برای حذف سرور قبلی تایید کنید:';
+        }
 
         $domainLine = $domain ? "🪪 آدرس نود (برای پنل PasarGuard): `{$domain}`\n\n" : '';
         $dnsWarningLine = $dnsWarning ? "⚠️ {$dnsWarning}\n\n" : '';
@@ -85,7 +98,7 @@ class ReplaceServerFinishJob implements ShouldQueue
             "🌐 آی‌پی جدید: `{$this->newIp}`\n\n".
             $domainLine.
             $dnsWarningLine.
-            'سرور قبلی هنوز حذف نشده. اگر همه چیز روی سرور جدید مرتب است، برای حذف سرور قبلی تایید کنید:',
+            $oldServerLine,
             chat_id: $this->chatId,
             reply_markup: $keyboard,
             parse_mode: 'Markdown',

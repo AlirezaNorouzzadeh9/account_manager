@@ -14,13 +14,15 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 
 /**
  * Builds a REPLACEMENT server with the same region/size/image/hostname as an
- * existing one (offered when its Iran ping comes back incomplete — a
- * droplet's own IP never changes, so a new IP means a new droplet), waits
- * for the replacement's ping to be clean (auto retrying up to
- * ReplaceServerPollJob::MAX_ATTEMPTS times), re-applies the old server's
- * PasarGuard node + WireGuard locations onto it, and only THEN offers to
- * delete the old server. The old server is never touched until the user
- * explicitly confirms that final delete.
+ * existing one — either tapped manually ("🔄 تغییر سرور" on the server
+ * detail screen) or offered automatically when its Iran ping comes back
+ * incomplete (a droplet's own IP never changes, so a new IP means a new
+ * droplet). Waits for the replacement's ping to be clean (auto retrying up
+ * to ReplaceServerPollJob::MAX_ATTEMPTS times), re-applies the old server's
+ * PasarGuard node + WireGuard profile onto it, and only THEN — once that's
+ * confirmed working — schedules the old server for deletion 5 minutes
+ * later (see ReplaceServerFinishJob/DeleteOldServerJob). The old server is
+ * never touched before that.
  */
 class ReplaceServerConversation extends InlineMenu
 {
@@ -38,7 +40,7 @@ class ReplaceServerConversation extends InlineMenu
         $this->menuText(
             "🔄 یک سرور جدید با همان مشخصات (لوکیشن/پلن/سیستم‌عامل) ساخته می‌شود.\n".
             'اگر پینگ آن هم مشکل داشت، خودکار حذف و دوباره ساخته می‌شود (حداکثر '.ReplaceServerPollJob::MAX_ATTEMPTS." بار).\n".
-            'به‌محض پینگ سالم، نود + وایرگارد سرور فعلی روی آن پیاده می‌شود و سپس تایید شما برای حذف سرور فعلی گرفته می‌شود — تا آن لحظه سرور فعلی دست‌نخورده می‌ماند.'."\n\n".
+            'به‌محض پینگ سالم، نود + وایرگارد سرور فعلی روی آن پیاده می‌شود؛ اگر موفق بود، سرور فعلی خودکار تا ۵ دقیقه دیگر حذف می‌شود (در همان لحظه می‌توانید بررسی و در صورت نیاز جلوی حذف را بگیرید) — و اگر ناموفق بود، سرور فعلی دست‌نخورده می‌ماند و تایید حذف از شما گرفته می‌شود.'."\n\n".
             'ادامه بدهم؟'
         );
         $this->addButtonRow(
@@ -94,7 +96,7 @@ class ReplaceServerConversation extends InlineMenu
 
         $this->closeMenu(
             "🚀 ساخت سرور جایگزین شروع شد.\n".
-            'به‌محض آماده شدن پینگش چک می‌شود؛ سرور فعلی دست‌نخورده می‌ماند تا تایید نهایی شما.'
+            'به‌محض آماده شدن پینگش چک می‌شود؛ سرور فعلی تا تایید سالم بودن سرور جدید دست‌نخورده می‌ماند.'
         );
         $this->end();
     }
