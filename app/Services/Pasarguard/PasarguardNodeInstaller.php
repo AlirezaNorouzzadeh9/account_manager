@@ -187,7 +187,7 @@ YAML;
         $lines = [
             '[Interface]',
             "Address = {$settings->address}",
-            "PrivateKey = {$location->private_key}",
+            "PrivateKey = {$settings->private_key}",
         ];
 
         if ($settings->dns) {

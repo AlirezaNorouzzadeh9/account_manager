@@ -7,6 +7,7 @@ use App\Services\Providers\ProviderException;
 use App\Services\Providers\ProviderManager;
 use App\Services\Providers\ServerProvisioningService;
 use App\Telegram\Support\Cancellable;
+use App\Telegram\Support\CancellableTextStep;
 use App\Telegram\Support\EditsInPlace;
 use App\Telegram\Support\GridButtons;
 use SergiX44\Nutgram\Conversations\InlineMenu;
@@ -16,6 +17,7 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 class CreateServerConversation extends InlineMenu
 {
     use Cancellable;
+    use CancellableTextStep;
     use EditsInPlace;
     use GridButtons;
 
@@ -176,16 +178,34 @@ class CreateServerConversation extends InlineMenu
     {
         $this->image = $data;
         $this->imageLabel = $this->imageLabels[$data] ?? $data;
-        $this->closeMenu("نام (hostname) سرور را ارسال کنید (مثلاً: my-server-1):");
+
+        // closeMenu() nulls out messageId/chatId once it's done editing —
+        // restore them so a later "🔙 بازگشت" tap (which re-renders showImages())
+        // still edits this same message instead of sending a new one.
+        [$chatId, $messageId] = [$this->chatId, $this->messageId];
+        $this->closeMenu(
+            "نام (hostname) سرور را ارسال کنید (مثلاً: my-server-1):",
+            ['reply_markup' => $this->backButton()]
+        );
+        [$this->chatId, $this->messageId] = [$chatId, $messageId];
+
         $this->next('receiveHostname');
     }
 
     public function receiveHostname(Nutgram $bot): void
     {
+        if ($this->backTapped($bot)) {
+            $this->showImages($bot);
+            return;
+        }
+
         $name = trim((string) $bot->message()?->text);
 
         if (! preg_match('/^[a-zA-Z0-9]([a-zA-Z0-9\-.]{0,61}[a-zA-Z0-9])?$/', $name)) {
-            $bot->sendMessage('نام نامعتبر است. فقط حروف انگلیسی، عدد، خط‌تیره و نقطه مجاز است. دوباره ارسال کنید یا /cancel را بزنید:');
+            $bot->sendMessage(
+                'نام نامعتبر است. فقط حروف انگلیسی، عدد، خط‌تیره و نقطه مجاز است. دوباره ارسال کنید:',
+                reply_markup: $this->backButton()
+            );
             return;
         }
 

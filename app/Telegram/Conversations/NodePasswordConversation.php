@@ -6,6 +6,7 @@ use App\Jobs\InstallPasarguardNodeJob;
 use App\Jobs\UpdateWireguardsJob;
 use App\Models\ServerSecret;
 use App\Telegram\Support\Cancellable;
+use App\Telegram\Support\CancellableTextStep;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 
@@ -17,6 +18,7 @@ use SergiX44\Nutgram\Nutgram;
 class NodePasswordConversation extends Conversation
 {
     use Cancellable;
+    use CancellableTextStep;
 
     protected ?int $panelId = null;
     protected ?string $serverId = null;
@@ -28,16 +30,22 @@ class NodePasswordConversation extends Conversation
         $this->serverId = $serverId;
         $this->action = $action;
 
-        $bot->sendMessage('پسورد فعلی روت این سرور را ارسال کنید یا /cancel را بزنید:');
+        $bot->sendMessage('پسورد فعلی روت این سرور را ارسال کنید:', reply_markup: $this->backButton());
         $this->next('receivePassword');
     }
 
     public function receivePassword(Nutgram $bot): void
     {
+        if ($this->backTapped($bot)) {
+            $this->end();
+            ServerListMenu::begin($bot, $bot->userId(), $bot->chatId(), [$this->panelId, $this->serverId]);
+            return;
+        }
+
         $password = trim((string) $bot->message()?->text);
 
         if ($password === '') {
-            $bot->sendMessage('پسورد نامعتبر است. دوباره ارسال کنید یا /cancel را بزنید:');
+            $bot->sendMessage('پسورد نامعتبر است. دوباره ارسال کنید:', reply_markup: $this->backButton());
             return;
         }
 

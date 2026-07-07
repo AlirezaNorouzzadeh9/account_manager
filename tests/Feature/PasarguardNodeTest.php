@@ -194,7 +194,6 @@ class PasarguardNodeTest extends TestCase
             'name' => 'it',
             'ip' => '1.2.3.4',
             'server_public_key' => 'fake-pub',
-            'private_key' => 'fake-priv',
         ]);
 
         $panel = Panel::create([

@@ -79,21 +79,9 @@ class WireguardMenu extends InlineMenu
             "آی‌پی: {$location->ip}\n".
             "PublicKey سرور: {$location->server_public_key}"
         );
-        $this->addButtonRow(InlineKeyboardButton::make('👁 نمایش PrivateKey', callback_data: 'x@revealPrivateKey'));
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف لوکیشن', callback_data: 'x@confirmDeleteLocation'));
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToList'));
         $this->showMenu();
-    }
-
-    public function revealPrivateKey(Nutgram $bot): void
-    {
-        $location = WireguardLocation::find($this->currentLocationId);
-
-        if ($location) {
-            $bot->sendMessage($location->private_key);
-        }
-
-        $this->setCallbackQueryOptions(['text' => 'PrivateKey در پیام بعدی فرستاده شد.']);
     }
 
     public function backToList(Nutgram $bot): void

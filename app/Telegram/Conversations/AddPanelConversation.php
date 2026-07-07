@@ -6,12 +6,15 @@ use App\Enums\Provider;
 use App\Models\Panel;
 use App\Services\Providers\ProviderException;
 use App\Services\Providers\ProviderManager;
+use App\Telegram\Support\CancellableTextStep;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 
 class AddPanelConversation extends InlineMenu
 {
+    use CancellableTextStep;
+
     protected ?string $provider = null;
     protected ?string $name = null;
 
@@ -46,16 +49,25 @@ class AddPanelConversation extends InlineMenu
         }
 
         $this->provider = $provider->value;
-        $this->closeMenu("دیتاسنتر: {$provider->label()}\nحالا یک نام دلخواه برای این پنل بفرستید (مثلاً: Panel-1):");
+        $this->closeMenu(
+            "دیتاسنتر: {$provider->label()}\nحالا یک نام دلخواه برای این پنل بفرستید (مثلاً: Panel-1):",
+            ['reply_markup' => $this->backButton()]
+        );
         $this->next('receiveName');
     }
 
     public function receiveName(Nutgram $bot): void
     {
+        if ($this->backTapped($bot)) {
+            $this->end();
+            PanelsMenu::begin($bot);
+            return;
+        }
+
         $name = trim((string) $bot->message()?->text);
 
         if ($name === '' || mb_strlen($name) > 50) {
-            $bot->sendMessage('نام نامعتبر است. یک نام کوتاه‌تر بفرستید یا /cancel را بزنید:');
+            $bot->sendMessage('نام نامعتبر است. یک نام کوتاه‌تر بفرستید:', reply_markup: $this->backButton());
             return;
         }
 
@@ -63,17 +75,24 @@ class AddPanelConversation extends InlineMenu
         $bot->sendMessage(
             "توکن API را ارسال کنید.\n".
             "می‌توانید آن را از این آدرس بسازید:\n".
-            'https://cloud.digitalocean.com/account/api/tokens'
+            'https://cloud.digitalocean.com/account/api/tokens',
+            reply_markup: $this->backButton()
         );
         $this->next('receiveToken');
     }
 
     public function receiveToken(Nutgram $bot): void
     {
+        if ($this->backTapped($bot)) {
+            $this->end();
+            PanelsMenu::begin($bot);
+            return;
+        }
+
         $token = trim((string) $bot->message()?->text);
 
         if ($token === '') {
-            $bot->sendMessage('توکن نامعتبر است. دوباره ارسال کنید یا /cancel را بزنید:');
+            $bot->sendMessage('توکن نامعتبر است. دوباره ارسال کنید:', reply_markup: $this->backButton());
             return;
         }
 
@@ -82,7 +101,7 @@ class AddPanelConversation extends InlineMenu
         try {
             $account = ProviderManager::make($provider, $token)->account();
         } catch (ProviderException $e) {
-            $bot->sendMessage("توکن معتبر نیست:\n{$e->getMessage()}\nدوباره ارسال کنید یا /cancel را بزنید:");
+            $bot->sendMessage("توکن معتبر نیست:\n{$e->getMessage()}\nدوباره ارسال کنید:", reply_markup: $this->backButton());
             return;
         }
 

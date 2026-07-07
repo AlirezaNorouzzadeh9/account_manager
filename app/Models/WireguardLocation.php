@@ -10,10 +10,5 @@ class WireguardLocation extends Model
         'name',
         'ip',
         'server_public_key',
-        'private_key',
-    ];
-
-    protected $casts = [
-        'private_key' => 'encrypted',
     ];
 }
