@@ -193,6 +193,23 @@ class PasarguardNodeTest extends TestCase
         $this->assertStringContainsString('Endpoint = 212.102.54.131:51820', $config);
     }
 
+    public function test_dns_configured_requires_both_zone_id_and_api_token(): void
+    {
+        $installer = new PasarguardNodeInstaller();
+        $ref = new \ReflectionClass($installer);
+        $method = $ref->getMethod('dnsConfigured');
+        $method->setAccessible(true);
+
+        config(['dns.cloudflare.zone_id' => null, 'dns.cloudflare.api_token' => null]);
+        $this->assertFalse($method->invoke($installer));
+
+        config(['dns.cloudflare.zone_id' => 'zone-1', 'dns.cloudflare.api_token' => null]);
+        $this->assertFalse($method->invoke($installer));
+
+        config(['dns.cloudflare.zone_id' => 'zone-1', 'dns.cloudflare.api_token' => 'token-1']);
+        $this->assertTrue($method->invoke($installer));
+    }
+
     public function test_interface_name_uses_config_name_and_dedupes_collisions(): void
     {
         $installer = new PasarguardNodeInstaller();

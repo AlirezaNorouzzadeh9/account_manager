@@ -63,7 +63,7 @@ class InstallPasarguardNodeJob implements ShouldQueue
         }
 
         try {
-            $result = $installer->install($ip, 'root', $secret->root_password, $secret->wireguardProfile?->private_key);
+            $result = $installer->install($ip, 'root', $secret->root_password, $secret->wireguardProfile?->private_key, $secret->hostname);
         } catch (RuntimeException $e) {
             if ($this->attempts() < $this->tries) {
                 $this->release(15);
@@ -100,6 +100,16 @@ class InstallPasarguardNodeJob implements ShouldQueue
         }
 
         $bot->sendMessage($message, chat_id: $this->chatId);
+
+        // Sent separately (and only this part gets Markdown) so a stray
+        // '_'/'*' inside the raw log or cert above can never break parsing.
+        if (! empty($result['domain'])) {
+            $bot->sendMessage(
+                "🌐 برای ثبت در پنل PasarGuard، به‌جای آی‌پی از این آدرس استفاده کنید:\n`{$result['domain']}`",
+                chat_id: $this->chatId,
+                parse_mode: 'Markdown',
+            );
+        }
     }
 
     public function failed(?Throwable $exception): void

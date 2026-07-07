@@ -2,21 +2,31 @@
 
 namespace App\Services\Pasarguard;
 
+use App\Models\NodeCertificate;
 use App\Models\WireguardLocation;
+use App\Services\Dns\CloudflareDnsClient;
 use Illuminate\Support\Collection;
 use phpseclib3\Net\SSH2;
 use RuntimeException;
+use Throwable;
 
 /**
  * Turns a freshly created server into a PasarGuard (Marzban-compatible) node:
  * installs Docker if missing, writes the docker-compose/.env files, generates
  * this node's own TLS certificate, and brings the "node-1" container up.
  *
- * The TLS cert/key CANNOT be the same fixed pair for every node: the panel
- * validates the node's certificate against the IP it's connecting to
- * (SSL "IP address mismatch" otherwise), so each node needs its own
- * self-signed cert with subjectAltName = its own public IP. Only API_KEY is
- * a fixed shared secret across every node (see config/pasarguard.php).
+ * The TLS cert/key normally CANNOT be the same fixed pair for every node:
+ * the panel validates the node's certificate against the address it's
+ * connecting to (SSL "IP address mismatch" otherwise), so by default each
+ * node gets its own self-signed cert with subjectAltName = its own public
+ * IP. Only API_KEY is a fixed shared secret across every node (see
+ * config/pasarguard.php).
+ *
+ * If config/dns.php's Cloudflare credentials are set, this instead points
+ * the node at a DNS subdomain (e.g. "srv-1.node.pcbot.top" → the node's IP)
+ * and uses ONE fixed self-signed wildcard cert for every node — the panel
+ * then connects by that domain name, which the wildcard SAN always covers,
+ * so the same cert genuinely works everywhere.
  */
 class PasarguardNodeInstaller
 {
@@ -51,10 +61,15 @@ services:
 YAML;
 
     /**
-     * @return array{success: bool, message: string, log: string}
+     * @return array{success: bool, message: string, log: string, cert: string, domain: ?string}
      */
-    public function install(string $host, string $username, string $password, ?string $wireguardPrivateKey = null): array
-    {
+    public function install(
+        string $host,
+        string $username,
+        string $password,
+        ?string $wireguardPrivateKey = null,
+        ?string $hostname = null,
+    ): array {
         $ssh = new SSH2($host, 22);
         $ssh->setTimeout(20);
 
@@ -84,6 +99,7 @@ YAML;
                 'message' => 'نصب Docker روی سرور ناموفق بود.',
                 'log' => $log,
                 'cert' => '',
+                'domain' => null,
             ];
         }
 
@@ -95,7 +111,7 @@ YAML;
 
         $this->writeRemoteFile($ssh, self::REMOTE_DIR.'/docker-compose.yml', self::COMPOSE_YAML);
         $this->writeRemoteFile($ssh, self::REMOTE_DIR.'/node-1/.env', $this->buildEnvFile($wireguardConfigs->isNotEmpty()));
-        [$certLog, $certContent] = $this->generateNodeCertificate($ssh, $host);
+        [$certLog, $certContent, $domain] = $this->setUpCertificate($ssh, $host, $hostname);
         $log .= $certLog;
 
         // A fresh droplet's network/DNS can still be settling right after boot
@@ -134,6 +150,7 @@ YAML;
                     : 'کانتینر نود بالا نیامد. لاگ کانتینر بررسی شود.',
                 'log' => $log,
                 'cert' => $certContent,
+                'domain' => $domain,
             ];
         }
 
@@ -148,6 +165,7 @@ YAML;
             'message' => $message,
             'log' => $log,
             'cert' => $certContent,
+            'domain' => $domain,
         ];
     }
 
@@ -299,6 +317,92 @@ YAML;
         $usedNames[] = $candidate;
 
         return $candidate;
+    }
+
+    /**
+     * Decides which certificate strategy to use for this node: a DNS-backed
+     * fixed wildcard cert (if Cloudflare credentials + a hostname are
+     * available) or the classic per-node, IP-bound one otherwise.
+     *
+     * @return array{0: string, 1: string, 2: ?string} [log excerpt, cert PEM content, domain used (if any)]
+     */
+    protected function setUpCertificate(SSH2 $ssh, string $ip, ?string $hostname): array
+    {
+        if ($hostname === null || ! $this->dnsConfigured()) {
+            [$log, $cert] = $this->generateNodeCertificate($ssh, $ip);
+
+            return [$log, $cert, null];
+        }
+
+        $domain = "{$hostname}.".config('dns.cloudflare.node_domain');
+
+        try {
+            $this->dnsClient()->upsertARecord($domain, $ip);
+        } catch (Throwable $e) {
+            // DNS is best-effort here — fall back to the classic per-IP cert
+            // rather than failing the whole install over it.
+            [$log, $cert] = $this->generateNodeCertificate($ssh, $ip);
+
+            return ["\$ Cloudflare DNS record for {$domain} failed: {$e->getMessage()}\n".$log, $cert, null];
+        }
+
+        [$certificate, $privateKey] = $this->ensureFixedCertificate($ssh);
+        $this->installCertificate($ssh, $certificate, $privateKey);
+
+        return ["\$ using fixed wildcard certificate (domain: {$domain})\n", $certificate, $domain];
+    }
+
+    protected function dnsConfigured(): bool
+    {
+        return filled(config('dns.cloudflare.zone_id')) && filled(config('dns.cloudflare.api_token'));
+    }
+
+    protected function dnsClient(): CloudflareDnsClient
+    {
+        return new CloudflareDnsClient(config('dns.cloudflare.api_token'), config('dns.cloudflare.zone_id'));
+    }
+
+    /**
+     * The ONE fixed self-signed wildcard cert (SAN = *.<node_domain>) shared
+     * by every node once DNS-based addressing is on — generated once (via
+     * openssl over this SSH connection, same mechanism as the per-node
+     * path) and cached, so later installs just reuse it.
+     *
+     * @return array{0: string, 1: string} [certificate PEM, private key PEM]
+     */
+    protected function ensureFixedCertificate(SSH2 $ssh): array
+    {
+        $stored = NodeCertificate::first();
+
+        if ($stored) {
+            return [$stored->certificate, $stored->private_key];
+        }
+
+        $domain = config('dns.cloudflare.node_domain');
+        $certPath = self::DATA_DIR.'/certs/ssl_cert.pem';
+        $keyPath = self::DATA_DIR.'/certs/ssl_key.pem';
+
+        $cmd = 'openssl req -x509 -nodes -newkey rsa:2048 '.
+            '-keyout '.escapeshellarg($keyPath).' '.
+            '-out '.escapeshellarg($certPath).' '.
+            '-days 3650 '.
+            '-subj '.escapeshellarg("/CN=*.{$domain}").' '.
+            '-addext '.escapeshellarg("subjectAltName=DNS:*.{$domain},DNS:{$domain}").' 2>&1';
+
+        $this->run($ssh, $cmd);
+        $certificate = trim($this->run($ssh, 'cat '.escapeshellarg($certPath)));
+        $privateKey = trim($this->run($ssh, 'cat '.escapeshellarg($keyPath)));
+
+        NodeCertificate::create(['certificate' => $certificate, 'private_key' => $privateKey]);
+
+        return [$certificate, $privateKey];
+    }
+
+    protected function installCertificate(SSH2 $ssh, string $certificate, string $privateKey): void
+    {
+        $this->writeRemoteFile($ssh, self::DATA_DIR.'/certs/ssl_cert.pem', $certificate);
+        $this->writeRemoteFile($ssh, self::DATA_DIR.'/certs/ssl_key.pem', $privateKey);
+        $this->run($ssh, 'chmod 600 '.escapeshellarg(self::DATA_DIR.'/certs/ssl_key.pem'));
     }
 
     /**

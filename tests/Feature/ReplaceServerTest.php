@@ -330,8 +330,8 @@ class ReplaceServerTest extends TestCase
         $installer = \Mockery::mock(PasarguardNodeInstaller::class);
         $installer->shouldReceive('install')
             ->once()
-            ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key')
-            ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => '']);
+            ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key', 'srv-old')
+            ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => '', 'domain' => null]);
         $this->app->instance(PasarguardNodeInstaller::class, $installer);
 
         /** @var FakeNutgram $bot */
