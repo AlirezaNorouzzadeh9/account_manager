@@ -7,6 +7,7 @@ use App\Jobs\PollProviderActionJob;
 use App\Jobs\UpdateWireguardsJob;
 use App\Models\Panel;
 use App\Models\ServerSecret;
+use App\Models\WireguardProfile;
 use App\Services\Providers\DigitalOcean\DigitalOceanClient;
 use App\Services\Providers\ProviderClient;
 use App\Services\Providers\ProviderException;
@@ -28,6 +29,9 @@ class ServerListMenu extends InlineMenu
     protected int $page = 1;
     protected int|string|null $serverId = null;
     protected ?string $pendingImage = null;
+
+    /** 'none' or a numeric WireguardProfile id, chosen right before install/update-wireguards. */
+    protected ?string $pendingProfile = null;
 
     protected function panel(): Panel
     {
@@ -188,13 +192,14 @@ class ServerListMenu extends InlineMenu
         $this->menuText(
             "🏷 نام: {$server['name']}\n".
             "⚙️ وضعیت: {$server['status']}\n".
-            "🌐 آی‌پی: {$ip}\n".
-            "➕ آی‌پی رزرو: {$reservedIp}\n".
-            "🔑 پسورد روت: {$password}\n".
+            "🌐 آی‌پی: `{$ip}`\n".
+            "➕ آی‌پی رزرو: `{$reservedIp}`\n".
+            "🔑 پسورد روت: `{$password}`\n".
             "{$flag} دیتاسنتر: {$regionName}\n".
             "💽 پلن: {$server['size_slug']} ({$vcpus} vCPU / {$ramGb}GB RAM / {$diskGb}GB Disk)\n".
             "💰 قیمت: {$price}\n".
-            "💿 سیستم‌عامل: {$server['image']['distribution']} {$server['image']['name']}"
+            "💿 سیستم‌عامل: {$server['image']['distribution']} {$server['image']['name']}",
+            ['parse_mode' => 'Markdown']
         );
 
         // Power controls
@@ -446,8 +451,39 @@ class ServerListMenu extends InlineMenu
         $this->renderServerDetail($bot);
     }
 
+    /**
+     * Adds one button per saved WireGuard profile plus a "بدون وایرگارد"
+     * skip option, each routed to $callback with the picked value as data
+     * ('none' or the profile id).
+     */
+    protected function addProfileButtons(string $callback): void
+    {
+        foreach (WireguardProfile::orderBy('name')->get() as $profile) {
+            $this->addButtonRow(InlineKeyboardButton::make(
+                "🪪 {$profile->name}",
+                callback_data: "{$profile->id}@{$callback}"
+            ));
+        }
+
+        $this->addButtonRow(InlineKeyboardButton::make('🚫 بدون وایرگارد', callback_data: "none@{$callback}"));
+    }
+
     public function confirmInstallNode(Nutgram $bot): void
     {
+        $this->clearButtons();
+        $this->menuText(
+            "🧩 این کار داکر را (در صورت نبود) روی سرور نصب می‌کند و یک نود پاسارگارد بالا می‌آورد.\n".
+            'کدام پروفایل وایرگارد (هویت این سرور) روی آن فعال شود؟'
+        );
+        $this->addProfileButtons('chooseInstallProfile');
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'));
+        $this->showMenu();
+    }
+
+    public function chooseInstallProfile(Nutgram $bot, string $data): void
+    {
+        $this->pendingProfile = $data;
+
         $hasSecret = ServerSecret::where('panel_id', $this->panelId)
             ->where('provider_server_id', $this->serverId)
             ->exists();
@@ -462,14 +498,14 @@ class ServerListMenu extends InlineMenu
                 $bot,
                 $bot->userId(),
                 $bot->chatId(),
-                [$this->panelId, $this->serverId, 'install']
+                [$this->panelId, $this->serverId, 'install', $data]
             );
             return;
         }
 
         $this->clearButtons();
         $this->menuText(
-            "🧩 این کار داکر را (در صورت نبود) روی سرور نصب می‌کند، یک نود پاسارگارد بالا می‌آورد و همه‌ی لوکیشن‌های وایرگارد ذخیره‌شده را رویش فعال می‌کند.\n".
+            "🧩 این کار داکر را (در صورت نبود) روی سرور نصب می‌کند، یک نود پاسارگارد بالا می‌آورد و همه‌ی لوکیشن‌های وایرگارد ذخیره‌شده را با این پروفایل رویش فعال می‌کند.\n".
             'این عملیات چند دقیقه طول می‌کشد. ادامه بدهم؟'
         );
         $this->addButtonRow(
@@ -481,6 +517,10 @@ class ServerListMenu extends InlineMenu
 
     public function installNode(Nutgram $bot): void
     {
+        ServerSecret::where('panel_id', $this->panelId)
+            ->where('provider_server_id', $this->serverId)
+            ->update(['wireguard_profile_id' => $this->pendingProfile === 'none' ? null : (int) $this->pendingProfile]);
+
         InstallPasarguardNodeJob::dispatch($this->panelId, $this->serverId, $bot->chatId());
 
         $this->closeMenu('⏳ درخواست نود کردن سرور ثبت شد. به محض اتمام نتیجه را برایتان ارسال می‌کنم.');
@@ -488,6 +528,15 @@ class ServerListMenu extends InlineMenu
     }
 
     public function updateWireguards(Nutgram $bot): void
+    {
+        $this->clearButtons();
+        $this->menuText('کدام پروفایل وایرگارد (هویت این سرور) روی آن فعال شود؟');
+        $this->addProfileButtons('chooseUpdateProfile');
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToServer'));
+        $this->showMenu();
+    }
+
+    public function chooseUpdateProfile(Nutgram $bot, string $data): void
     {
         $hasSecret = ServerSecret::where('panel_id', $this->panelId)
             ->where('provider_server_id', $this->serverId)
@@ -500,10 +549,14 @@ class ServerListMenu extends InlineMenu
                 $bot,
                 $bot->userId(),
                 $bot->chatId(),
-                [$this->panelId, $this->serverId, 'update_wireguards']
+                [$this->panelId, $this->serverId, 'update_wireguards', $data]
             );
             return;
         }
+
+        ServerSecret::where('panel_id', $this->panelId)
+            ->where('provider_server_id', $this->serverId)
+            ->update(['wireguard_profile_id' => $data === 'none' ? null : (int) $data]);
 
         UpdateWireguardsJob::dispatch($this->panelId, $this->serverId, $bot->chatId());
 

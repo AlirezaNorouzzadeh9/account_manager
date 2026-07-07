@@ -55,7 +55,7 @@ class CreateServerFinalReportJob implements ShouldQueue
     protected function send(Nutgram $bot, string $pingSection): void
     {
         $message = "✅ سرور «{$this->hostname}» با موفقیت ساخته شد.\n".
-            "🌐 آی‌پی: {$this->ip}\n\n".
+            "🌐 آی‌پی: `{$this->ip}`\n\n".
             "{$this->credentials}\n\n".
             "📡 پینگ از ایران:\n{$pingSection}";
 
@@ -72,6 +72,6 @@ class CreateServerFinalReportJob implements ShouldQueue
                 ->addRow(InlineKeyboardButton::make('🔄 تغییر سرور', callback_data: "recreate_server:{$this->panelId}:{$this->serverId}"));
         }
 
-        $bot->sendMessage($message, chat_id: $this->chatId, reply_markup: $keyboard);
+        $bot->sendMessage($message, chat_id: $this->chatId, reply_markup: $keyboard, parse_mode: 'Markdown');
     }
 }

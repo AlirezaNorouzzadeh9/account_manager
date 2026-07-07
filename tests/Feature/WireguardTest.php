@@ -3,14 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\WireguardLocation;
-use App\Models\WireguardSettings;
+use App\Models\WireguardProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\User\User;
 use SergiX44\Nutgram\Testing\FakeNutgram;
 use Tests\TestCase;
 
-class WireguardSettingsTest extends TestCase
+class WireguardTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -25,7 +25,7 @@ class WireguardSettingsTest extends TestCase
         return $bot;
     }
 
-    public function test_add_location_stores_ip_keys_and_applies_to_every_server(): void
+    public function test_add_location_stores_ip_and_server_public_key(): void
     {
         $bot = $this->bot();
         $bot->willStartConversation();
@@ -121,13 +121,13 @@ class WireguardSettingsTest extends TestCase
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x')->reply();
         $bot->hearCallbackQueryData((string) $location->id)->reply(); // showLocation
-        $bot->hearCallbackQueryData('x')->reply(); // "🗑 حذف لوکیشن" (1st x-prefixed button now that revealPrivateKey is gone)
+        $bot->hearCallbackQueryData('x')->reply(); // "🗑 حذف لوکیشن"
         $bot->hearCallbackQueryData('yes')->reply();
 
         $this->assertNull($location->fresh());
     }
 
-    public function test_editing_settings_saves_shared_fields(): void
+    public function test_add_profile_stores_name_and_private_key(): void
     {
         $bot = $this->bot();
         $bot->willStartConversation();
@@ -135,18 +135,38 @@ class WireguardSettingsTest extends TestCase
         $bot->hearText('/start')->reply();
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x')->reply(); // "وایرگاردها"
-        $bot->hearCallbackQueryData('x@')->reply(); // "⚙️ تنظیمات پایه" (2nd x-prefixed button, empty menu)
-        $bot->hearText('10.14.0.2/16')->reply();
-        $bot->hearText('162.252.172.57, 149.154.159.92')->reply();
-        $bot->hearText('0.0.0.0/0')->reply();
-        $bot->hearText('51820')->reply();
-        $bot->hearText('fake-shared-private-key')->reply();
+        $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (2nd x-prefixed button, empty locations)
+        $bot->hearCallbackQueryData('x')->reply(); // "➕ افزودن پروفایل" (first x button, empty menu)
+        $bot->hearText('server-1')->reply();
+        $bot->hearText('fake-private-key')->reply();
 
-        $settings = WireguardSettings::current();
-        $this->assertSame('10.14.0.2/16', $settings->address);
-        $this->assertSame('162.252.172.57, 149.154.159.92', $settings->dns);
-        $this->assertSame('0.0.0.0/0', $settings->allowed_ips);
-        $this->assertSame(51820, $settings->port);
-        $this->assertSame('fake-shared-private-key', $settings->private_key);
+        $profile = WireguardProfile::first();
+        $this->assertNotNull($profile);
+        $this->assertSame('server-1', $profile->name);
+        $this->assertSame('fake-private-key', $profile->private_key);
+
+        // After saving, the profile list reopens (with the new profile in it).
+        $history = $bot->getRequestHistory();
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+        $this->assertStringContainsString('🪪 server-1', json_encode($body['reply_markup'] ?? [], JSON_UNESCAPED_UNICODE));
+    }
+
+    public function test_deleting_a_profile_removes_it_and_clears_it_from_servers(): void
+    {
+        $profile = WireguardProfile::create(['name' => 'server-1', 'private_key' => 'fake-key']);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply(); // "وایرگاردها"
+        $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها"
+        $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
+        $bot->hearCallbackQueryData('x@')->reply(); // "🗑 حذف پروفایل" (2nd x-prefixed button)
+        $bot->hearCallbackQueryData('yes')->reply();
+
+        $this->assertNull($profile->fresh());
     }
 }

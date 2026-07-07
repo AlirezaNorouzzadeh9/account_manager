@@ -3,7 +3,6 @@
 namespace App\Services\Pasarguard;
 
 use App\Models\WireguardLocation;
-use App\Models\WireguardSettings;
 use Illuminate\Support\Collection;
 use phpseclib3\Net\SSH2;
 use RuntimeException;
@@ -23,6 +22,15 @@ class PasarguardNodeInstaller
 {
     protected const REMOTE_DIR = '/root/pg-node-1';
     protected const DATA_DIR = '/var/lib/pg-node-1';
+
+    // Shared by every WireGuard location's [Interface]/[Peer] — only
+    // ip/server_public_key (per WireguardLocation) and PrivateKey (per
+    // WireguardProfile, chosen per server) actually vary.
+    protected const WG_ADDRESS = '10.14.0.2/16';
+    protected const WG_DNS = '162.252.172.57, 149.154.159.92';
+    protected const WG_ALLOWED_IPS = '0.0.0.0/0';
+    protected const WG_PORT = 51820;
+    protected const WG_TABLE = 'off';
 
     protected const COMPOSE_YAML = <<<'YAML'
 services:
@@ -45,7 +53,7 @@ YAML;
     /**
      * @return array{success: bool, message: string, log: string}
      */
-    public function install(string $host, string $username, string $password): array
+    public function install(string $host, string $username, string $password, ?string $wireguardPrivateKey = null): array
     {
         $ssh = new SSH2($host, 22);
         $ssh->setTimeout(20);
@@ -55,7 +63,10 @@ YAML;
         }
 
         $log = '';
-        $wireguardConfigs = WireguardLocation::all();
+        // No profile PrivateKey chosen for this server => no WireGuard,
+        // regardless of how many locations are saved (a [Interface] can't be
+        // built without a PrivateKey).
+        $wireguardConfigs = $wireguardPrivateKey !== null ? WireguardLocation::all() : collect();
 
         // A just-booted droplet may still be running its first-boot apt
         // operations (cloud-init), holding the dpkg lock — wait it out first,
@@ -112,7 +123,7 @@ YAML;
         }
 
         $this->resetExistingWireguards($ssh);
-        [$wireguardsUp, $wireguardLog] = $this->installWireguards($ssh, $wireguardConfigs);
+        [$wireguardsUp, $wireguardLog] = $this->installWireguards($ssh, $wireguardConfigs, $wireguardPrivateKey);
         $log .= $wireguardLog;
 
         if (! $nodeUp || ! $wireguardsUp) {
@@ -147,7 +158,7 @@ YAML;
      *
      * @return array{success: bool, message: string, log: string}
      */
-    public function updateWireguards(string $host, string $username, string $password): array
+    public function updateWireguards(string $host, string $username, string $password, ?string $wireguardPrivateKey = null): array
     {
         $ssh = new SSH2($host, 22);
         $ssh->setTimeout(20);
@@ -156,14 +167,14 @@ YAML;
             throw new RuntimeException('اتصال SSH ناموفق بود (احتمالاً پسورد اشتباه است).');
         }
 
-        $configs = WireguardLocation::all();
+        $configs = $wireguardPrivateKey !== null ? WireguardLocation::all() : collect();
 
         if ($configs->isNotEmpty()) {
             $this->ensureWireguardTools($ssh);
         }
 
         $this->resetExistingWireguards($ssh);
-        [$allUp, $log] = $this->installWireguards($ssh, $configs);
+        [$allUp, $log] = $this->installWireguards($ssh, $configs, $wireguardPrivateKey);
 
         return [
             'success' => $allUp,
@@ -178,33 +189,23 @@ YAML;
 
     /**
      * Builds the full wg-quick text for one location: the location's own
-     * ip/server_public_key/private_key combined with the shared settings
-     * (address/dns/allowed_ips/port/table) that are identical for every
-     * location.
+     * ip/server_public_key combined with the fixed shared fields and the
+     * PrivateKey of the profile chosen for this particular server.
      */
-    protected function buildLocationConfig(WireguardLocation $location, WireguardSettings $settings): string
+    protected function buildLocationConfig(WireguardLocation $location, string $privateKey): string
     {
-        $lines = [
+        return implode("\n", [
             '[Interface]',
-            "Address = {$settings->address}",
-            "PrivateKey = {$settings->private_key}",
-        ];
-
-        if ($settings->dns) {
-            $lines[] = "DNS = {$settings->dns}";
-        }
-
-        if ($settings->routing_table) {
-            $lines[] = "Table = {$settings->routing_table}";
-        }
-
-        $lines[] = '';
-        $lines[] = '[Peer]';
-        $lines[] = "PublicKey = {$location->server_public_key}";
-        $lines[] = "AllowedIPs = {$settings->allowed_ips}";
-        $lines[] = "Endpoint = {$location->ip}:{$settings->port}";
-
-        return implode("\n", $lines);
+            'Address = '.self::WG_ADDRESS,
+            "PrivateKey = {$privateKey}",
+            'DNS = '.self::WG_DNS,
+            'Table = '.self::WG_TABLE,
+            '',
+            '[Peer]',
+            "PublicKey = {$location->server_public_key}",
+            'AllowedIPs = '.self::WG_ALLOWED_IPS,
+            "Endpoint = {$location->ip}:".self::WG_PORT,
+        ]);
     }
 
     /**
@@ -230,16 +231,15 @@ YAML;
     /**
      * @return array{0: bool, 1: string}
      */
-    protected function installWireguards(SSH2 $ssh, Collection $configs): array
+    protected function installWireguards(SSH2 $ssh, Collection $configs, ?string $privateKey): array
     {
-        if ($configs->isEmpty()) {
+        if ($configs->isEmpty() || $privateKey === null) {
             return [true, ''];
         }
 
         $log = '';
         $allUp = true;
         $usedNames = [];
-        $settings = WireguardSettings::current();
 
         // Units for wg-quick@ may have just been installed by ensureWireguardTools()
         // above; reload so systemd actually sees them before we enable anything.
@@ -248,7 +248,7 @@ YAML;
         foreach ($configs->values() as $config) {
             $iface = $this->sanitizeInterfaceName($config->name, $usedNames);
 
-            $this->writeRemoteFile($ssh, "/etc/wireguard/{$iface}.conf", $this->buildLocationConfig($config, $settings));
+            $this->writeRemoteFile($ssh, "/etc/wireguard/{$iface}.conf", $this->buildLocationConfig($config, $privateKey));
             $this->run($ssh, 'chmod 600 '.escapeshellarg("/etc/wireguard/{$iface}.conf"));
             $enableOutput = $this->run($ssh, "systemctl enable --now wg-quick@{$iface} 2>&1");
 

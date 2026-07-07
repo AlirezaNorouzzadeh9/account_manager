@@ -35,6 +35,7 @@ class ReplaceServerPollJob implements ShouldQueue
         protected string $region,
         protected string $size,
         protected string $image,
+        protected ?int $wireguardProfileId,
         protected int $chatId,
         protected int $attempt,
     ) {
@@ -110,6 +111,7 @@ class ReplaceServerPollJob implements ShouldQueue
             $this->region,
             $this->size,
             $this->image,
+            $this->wireguardProfileId,
             $this->chatId,
             $this->attempt,
         );

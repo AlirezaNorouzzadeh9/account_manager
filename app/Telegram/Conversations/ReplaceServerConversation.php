@@ -86,6 +86,7 @@ class ReplaceServerConversation extends InlineMenu
                 $secret->region,
                 $secret->size,
                 $secret->image,
+                $secret->wireguard_profile_id,
                 $bot->chatId(),
                 1,
             );

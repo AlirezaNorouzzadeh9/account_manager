@@ -15,7 +15,7 @@ use Throwable;
 
 /**
  * The replacement droplet's ping came back clean — re-applies the PasarGuard
- * node + all saved WireGuard locations onto it, then asks the user to
+ * node + the old server's WireGuard profile onto it, then asks the user to
  * confirm deleting the old one. The old server is left completely alone
  * until that explicit confirmation (see the "delete_old_server" route).
  */
@@ -32,6 +32,7 @@ class ReplaceServerFinishJob implements ShouldQueue
         protected string $oldServerId,
         protected string $newServerId,
         protected string $newIp,
+        protected ?int $wireguardProfileId,
         protected int $chatId,
     ) {
     }
@@ -48,8 +49,13 @@ class ReplaceServerFinishJob implements ShouldQueue
             return;
         }
 
+        // Keep the same WireGuard profile as the old server going forward
+        // (e.g. for a later manual "🔄 بروزرسانی وایرگاردها").
+        $newSecret->update(['wireguard_profile_id' => $this->wireguardProfileId]);
+        $privateKey = $newSecret->wireguardProfile?->private_key;
+
         try {
-            $result = $installer->install($this->newIp, 'root', $newSecret->root_password);
+            $result = $installer->install($this->newIp, 'root', $newSecret->root_password, $privateKey);
             $statusMessage = ($result['success'] ? '✅ ' : '⚠️ ').$result['message'];
         } catch (Throwable $e) {
             $statusMessage = "⚠️ سرور جایگزین ساخته شد ولی نصب نود ناموفق بود:\n{$e->getMessage()}\n".
@@ -68,10 +74,11 @@ class ReplaceServerFinishJob implements ShouldQueue
 
         $bot->sendMessage(
             "{$statusMessage}\n\n".
-            "🌐 آی‌پی جدید: {$this->newIp}\n\n".
+            "🌐 آی‌پی جدید: `{$this->newIp}`\n\n".
             'سرور قبلی هنوز حذف نشده. اگر همه چیز روی سرور جدید مرتب است، برای حذف سرور قبلی تایید کنید:',
             chat_id: $this->chatId,
             reply_markup: $keyboard,
+            parse_mode: 'Markdown',
         );
     }
 

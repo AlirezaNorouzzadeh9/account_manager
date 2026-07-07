@@ -24,11 +24,20 @@ class NodePasswordConversation extends Conversation
     protected ?string $serverId = null;
     protected string $action = 'install';
 
-    public function start(Nutgram $bot, int $panelId, string $serverId, string $action = 'install'): void
+    /**
+     * The WireGuard profile chosen right before we found out the password
+     * was missing/wrong: 'none', a numeric profile id, or null when this
+     * conversation was reached via the "retry" button (in which case the
+     * server's previously saved profile is left untouched).
+     */
+    protected ?string $profile = null;
+
+    public function start(Nutgram $bot, int $panelId, string $serverId, string $action = 'install', ?string $profile = null): void
     {
         $this->panelId = $panelId;
         $this->serverId = $serverId;
         $this->action = $action;
+        $this->profile = $profile;
 
         $bot->sendMessage('پسورد فعلی روت این سرور را ارسال کنید:', reply_markup: $this->backButton());
         $this->next('receivePassword');
@@ -49,9 +58,15 @@ class NodePasswordConversation extends Conversation
             return;
         }
 
+        $attributes = ['root_password' => $password];
+
+        if ($this->profile !== null) {
+            $attributes['wireguard_profile_id'] = $this->profile === 'none' ? null : (int) $this->profile;
+        }
+
         ServerSecret::updateOrCreate(
             ['panel_id' => $this->panelId, 'provider_server_id' => $this->serverId],
-            ['root_password' => $password]
+            $attributes
         );
 
         if ($this->action === 'update_wireguards') {

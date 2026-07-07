@@ -17,7 +17,7 @@ class ServerProvisioningService
     public function create(Panel $panel, string $hostname, string $region, string $size, string $image, int $chatId): void
     {
         [$actionId, , $password] = $this->createSilently($panel, $hostname, $region, $size, $image);
-        $credentials = "👤 کاربر: root\n🔑 رمز عبور: {$password}";
+        $credentials = "👤 کاربر: `root`\n🔑 رمز عبور: `{$password}`";
 
         if ($actionId) {
             CreateServerReadyJob::dispatch($panel->id, $actionId, $chatId, $hostname, $credentials);

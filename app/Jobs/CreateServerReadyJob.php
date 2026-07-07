@@ -96,7 +96,7 @@ class CreateServerReadyJob implements ShouldQueue
         $message = "✅ سرور «{$this->hostname}» با موفقیت ساخته شد.";
 
         if ($ip) {
-            $message .= "\n🌐 آی‌پی: {$ip}";
+            $message .= "\n🌐 آی‌پی: `{$ip}`";
         }
 
         $message .= "\n\n{$this->credentials}";
@@ -107,7 +107,7 @@ class CreateServerReadyJob implements ShouldQueue
             )
             : null;
 
-        $bot->sendMessage($message, chat_id: $this->chatId, reply_markup: $keyboard);
+        $bot->sendMessage($message, chat_id: $this->chatId, reply_markup: $keyboard, parse_mode: 'Markdown');
     }
 
     public function failed(?Throwable $exception): void

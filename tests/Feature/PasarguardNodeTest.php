@@ -64,6 +64,7 @@ class PasarguardNodeTest extends TestCase
         $bot->hearCallbackQueryData("{$panel->id}")->reply();
         $bot->hearCallbackQueryData('55')->reply();
         $bot->hearCallbackQueryData('x@@@@@@')->reply(); // 7th x-prefixed button in the grid = confirmInstallNode
+        $bot->hearCallbackQueryData('none')->reply(); // wireguard profile picker: "بدون وایرگارد"
         $bot->hearCallbackQueryData('yes')->reply();
 
         Queue::assertPushed(InstallPasarguardNodeJob::class);
@@ -107,7 +108,8 @@ class PasarguardNodeTest extends TestCase
         $bot->hearCallbackQueryData('server:list')->reply();
         $bot->hearCallbackQueryData("{$panel->id}")->reply();
         $bot->hearCallbackQueryData('56')->reply();
-        $bot->hearCallbackQueryData('x@@@@@@')->reply(); // confirmInstallNode, no secret stored yet
+        $bot->hearCallbackQueryData('x@@@@@@')->reply(); // confirmInstallNode -> wireguard profile picker
+        $bot->hearCallbackQueryData('none')->reply(); // "بدون وایرگارد", no secret stored yet
         $bot->hearText('the-current-root-password')->reply();
 
         $this->assertDatabaseHas('server_secrets', [
@@ -165,6 +167,30 @@ class PasarguardNodeTest extends TestCase
         $this->assertStringContainsString('image: pasarguard/node:latest', $compose);
         $this->assertStringContainsString('env_file: node-1/.env', $compose);
         $this->assertStringContainsString('"8743:62050"', $compose);
+    }
+
+    public function test_location_config_uses_fixed_defaults_and_the_given_private_key(): void
+    {
+        $location = new WireguardLocation([
+            'name' => 'germany',
+            'ip' => '212.102.54.131',
+            'server_public_key' => 'vIMHzH5FHdVkrhOOc0u/FySVhumaLC3XUk39Wk34LnE=',
+        ]);
+
+        $installer = new PasarguardNodeInstaller();
+        $ref = new \ReflectionClass($installer);
+        $method = $ref->getMethod('buildLocationConfig');
+        $method->setAccessible(true);
+
+        $config = $method->invoke($installer, $location, 'fake-private-key');
+
+        $this->assertStringContainsString('Address = 10.14.0.2/16', $config);
+        $this->assertStringContainsString('PrivateKey = fake-private-key', $config);
+        $this->assertStringContainsString('DNS = 162.252.172.57, 149.154.159.92', $config);
+        $this->assertStringContainsString('Table = off', $config);
+        $this->assertStringContainsString('PublicKey = vIMHzH5FHdVkrhOOc0u/FySVhumaLC3XUk39Wk34LnE=', $config);
+        $this->assertStringContainsString('AllowedIPs = 0.0.0.0/0', $config);
+        $this->assertStringContainsString('Endpoint = 212.102.54.131:51820', $config);
     }
 
     public function test_interface_name_uses_config_name_and_dedupes_collisions(): void
@@ -236,7 +262,8 @@ class PasarguardNodeTest extends TestCase
         $bot->hearCallbackQueryData('server:list')->reply();
         $bot->hearCallbackQueryData("{$panel->id}")->reply();
         $bot->hearCallbackQueryData('57')->reply();
-        $bot->hearCallbackQueryData('x@@@@@@@')->reply(); // 8th x-prefixed button = updateWireguards
+        $bot->hearCallbackQueryData('x@@@@@@@')->reply(); // 8th x-prefixed button = updateWireguards -> profile picker
+        $bot->hearCallbackQueryData('none')->reply(); // wireguard profile picker: "بدون وایرگارد"
 
         Queue::assertPushed(UpdateWireguardsJob::class);
     }

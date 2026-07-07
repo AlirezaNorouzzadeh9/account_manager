@@ -9,9 +9,10 @@ use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 
 /**
- * Manages the flat list of WireGuard locations. Every server that has
- * WireGuard enabled gets ALL of these — there's no more per-server subset
- * (see the old "profile" concept this replaced).
+ * Manages the flat list of WireGuard locations — every server that has
+ * WireGuard enabled gets ALL of these. Per-server identity (PrivateKey) is
+ * a separate "profile" (see WireguardProfileMenu), picked when installing/
+ * updating WireGuard on a specific server.
  */
 class WireguardMenu extends InlineMenu
 {
@@ -36,7 +37,7 @@ class WireguardMenu extends InlineMenu
         ))->all());
 
         $this->addButtonRow(InlineKeyboardButton::make('➕ افزودن لوکیشن', callback_data: 'x@addLocation'));
-        $this->addButtonRow(InlineKeyboardButton::make('⚙️ تنظیمات پایه', callback_data: 'x@editSettings'));
+        $this->addButtonRow(InlineKeyboardButton::make('🪪 پروفایل‌ها', callback_data: 'x@profiles'));
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToSettings'));
         $this->showMenu();
     }
@@ -55,11 +56,11 @@ class WireguardMenu extends InlineMenu
         AddWireguardConversation::begin($bot);
     }
 
-    public function editSettings(Nutgram $bot): void
+    public function profiles(Nutgram $bot): void
     {
         $this->closeMenu();
         $this->end();
-        WireguardSettingsConversation::begin($bot);
+        WireguardProfileMenu::begin($bot);
     }
 
     public function showLocation(Nutgram $bot, string $data): void
