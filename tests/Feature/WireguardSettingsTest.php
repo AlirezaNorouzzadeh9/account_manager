@@ -43,6 +43,12 @@ class WireguardSettingsTest extends TestCase
         $this->assertSame('germany', $location->name);
         $this->assertSame('89.249.73.213', $location->ip);
         $this->assertSame('9wZOjtwuKEc0GBcvc3xJQ4Kjo8G3EMXu6zJRzbanOjc=', $location->server_public_key);
+
+        // After saving, the location list reopens (with the new location in it).
+        $history = $bot->getRequestHistory();
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+        $this->assertStringContainsString('🔒 germany', json_encode($body['reply_markup'] ?? [], JSON_UNESCAPED_UNICODE));
     }
 
     public function test_back_button_during_add_location_cancels_and_returns_to_list(): void

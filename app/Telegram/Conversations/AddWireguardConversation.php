@@ -90,5 +90,6 @@ class AddWireguardConversation extends Conversation
 
         $bot->sendMessage("✅ لوکیشن «{$this->name}» ذخیره شد و روی هر سروری که وایرگارد فعال شود اعمال می‌شود.");
         $this->end();
+        WireguardMenu::begin($bot);
     }
 }

@@ -142,5 +142,6 @@ class WireguardSettingsConversation extends Conversation
 
         $bot->sendMessage('✅ تنظیمات پایه‌ی وایرگارد ذخیره شد. برای اعمال روی سرورهای موجود، «بروزرسانی وایرگارد» را دوباره بزنید.');
         $this->end();
+        WireguardMenu::begin($bot);
     }
 }
