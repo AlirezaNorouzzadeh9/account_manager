@@ -21,9 +21,13 @@ class StartCommand
     public static function keyboard(): InlineKeyboardMarkup
     {
         return InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('🖥 پنل‌های من', callback_data: 'panels:menu'))
-            ->addRow(InlineKeyboardButton::make('➕ ساخت سرور', callback_data: 'server:create'))
-            ->addRow(InlineKeyboardButton::make('📋 سرورهای من', callback_data: 'server:list'))
-            ->addRow(InlineKeyboardButton::make('⚙️ تنظیمات', callback_data: 'settings:menu'));
+            ->addRow(
+                InlineKeyboardButton::make('🖥 پنل‌های من', callback_data: 'panels:menu'),
+                InlineKeyboardButton::make('➕ ساخت سرور', callback_data: 'server:create'),
+            )
+            ->addRow(
+                InlineKeyboardButton::make('📋 سرورهای من', callback_data: 'server:list'),
+                InlineKeyboardButton::make('⚙️ تنظیمات', callback_data: 'settings:menu'),
+            );
     }
 }

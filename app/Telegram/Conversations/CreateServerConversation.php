@@ -46,12 +46,10 @@ class CreateServerConversation extends InlineMenu
 
         $this->menuText('برای ساخت سرور، پنل مورد نظر را انتخاب کنید:');
 
-        foreach ($panels as $panel) {
-            $this->addButtonRow(InlineKeyboardButton::make(
-                "{$panel->name} ({$panel->provider->label()})",
-                callback_data: "{$panel->id}@choosePanel"
-            ));
-        }
+        $this->addButtonGrid($panels->map(fn (Panel $panel) => InlineKeyboardButton::make(
+            "🖥 {$panel->name} ({$panel->provider->label()})",
+            callback_data: "{$panel->id}@choosePanel"
+        ))->all());
 
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@cancel'));
         $this->showMenu();
@@ -123,7 +121,7 @@ class CreateServerConversation extends InlineMenu
 
         $this->addButtonGrid(array_map(function (array $s) {
             $label = sprintf(
-                '%s | %dvCPU/%dMB | $%s',
+                '💽 %s | %dvCPU/%dMB | $%s',
                 $s['slug'],
                 $s['vcpus'],
                 $s['memory'],
@@ -166,7 +164,7 @@ class CreateServerConversation extends InlineMenu
         $this->menuText('سیستم‌عامل را انتخاب کنید:');
 
         $this->addButtonGrid(array_map(
-            fn (array $img) => InlineKeyboardButton::make($img['label'], callback_data: "{$img['slug']}@chooseImage"),
+            fn (array $img) => InlineKeyboardButton::make("💿 {$img['label']}", callback_data: "{$img['slug']}@chooseImage"),
             $images
         ));
 
@@ -202,8 +200,10 @@ class CreateServerConversation extends InlineMenu
             "💿 سیستم‌عامل: {$this->imageLabel}\n\n".
             'ساخته شود؟'
         );
-        $this->addButtonRow(InlineKeyboardButton::make('✅ بله، بساز', callback_data: 'yes@confirm'));
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToImages'));
+        $this->addButtonRow(
+            InlineKeyboardButton::make('✅ بله، بساز', callback_data: 'yes@confirm'),
+            InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToImages'),
+        );
         $this->showMenu();
     }
 

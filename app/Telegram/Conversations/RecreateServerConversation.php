@@ -42,8 +42,10 @@ class RecreateServerConversation extends InlineMenu
             "⚠️ این سرور تازه ساخته شده (هنوز چیزی رویش نصب نشده). این کار آن را کامل حذف می‌کند و با همان مشخصات (لوکیشن/پلن/سیستم‌عامل) یک سرور تازه با آی‌پی جدید می‌سازد.\n".
             'مطمئن هستید؟'
         );
-        $this->addButtonRow(InlineKeyboardButton::make('✅ بله، دوباره بساز', callback_data: 'yes@confirmRecreate'));
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@cancel'));
+        $this->addButtonRow(
+            InlineKeyboardButton::make('✅ بله، دوباره بساز', callback_data: 'yes@confirmRecreate'),
+            InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@cancel'),
+        );
         $this->showMenu();
     }
 

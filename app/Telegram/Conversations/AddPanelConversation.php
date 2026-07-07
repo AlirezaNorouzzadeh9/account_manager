@@ -21,7 +21,7 @@ class AddPanelConversation extends InlineMenu
         $this->menuText('کدام دیتاسنتر را می‌خواهید اضافه کنید؟');
 
         foreach (Provider::cases() as $provider) {
-            $label = $provider->label().($provider->isAvailable() ? '' : ' (به‌زودی)');
+            $label = '☁️ '.$provider->label().($provider->isAvailable() ? '' : ' (به‌زودی)');
             $this->addButtonRow(InlineKeyboardButton::make($label, callback_data: "{$provider->value}@chooseProvider"));
         }
 

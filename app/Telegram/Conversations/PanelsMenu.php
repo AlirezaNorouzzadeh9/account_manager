@@ -5,6 +5,7 @@ namespace App\Telegram\Conversations;
 use App\Models\Panel;
 use App\Telegram\Support\Cancellable;
 use App\Telegram\Support\EditsInPlace;
+use App\Telegram\Support\GridButtons;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
@@ -13,6 +14,7 @@ class PanelsMenu extends InlineMenu
 {
     use Cancellable;
     use EditsInPlace;
+    use GridButtons;
 
     public function start(Nutgram $bot): void
     {
@@ -26,13 +28,14 @@ class PanelsMenu extends InlineMenu
             $this->menuText('هنوز هیچ پنلی اضافه نکرده‌اید.');
         } else {
             $this->menuText('پنل‌های شما:');
-            foreach ($panels as $panel) {
+            $this->addButtonGrid($panels->map(function (Panel $panel) {
                 $status = $panel->is_active ? '🟢' : '🔴';
-                $this->addButtonRow(InlineKeyboardButton::make(
+
+                return InlineKeyboardButton::make(
                     "{$status} {$panel->name} ({$panel->provider->label()})",
                     callback_data: "{$panel->id}@showPanel"
-                ));
-            }
+                );
+            })->all());
         }
 
         $this->addButtonRow(InlineKeyboardButton::make('➕ افزودن پنل', callback_data: 'x@addPanel'));
@@ -82,8 +85,10 @@ class PanelsMenu extends InlineMenu
             "آیا از حذف پنل «{$panel->name}» مطمئن هستید؟\n".
             'این کار سرورهای واقعی شما را حذف نمی‌کند، فقط دسترسی ربات به آن‌ها قطع می‌شود.'
         );
-        $this->addButtonRow(InlineKeyboardButton::make('✅ بله، حذف کن', callback_data: "{$panel->id}@doDelete"));
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToList'));
+        $this->addButtonRow(
+            InlineKeyboardButton::make('✅ بله، حذف کن', callback_data: "{$panel->id}@doDelete"),
+            InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToList'),
+        );
         $this->showMenu();
     }
 
