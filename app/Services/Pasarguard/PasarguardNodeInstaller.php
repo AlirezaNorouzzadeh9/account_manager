@@ -73,12 +73,7 @@ YAML;
         ?string $wireguardPrivateKey = null,
         ?string $wireguardProfileName = null,
     ): array {
-        $ssh = new SSH2($host, 22);
-        $ssh->setTimeout(20);
-
-        if (! $ssh->login($username, $password)) {
-            throw new RuntimeException('اتصال SSH ناموفق بود (احتمالاً سرور هنوز کاملاً آماده نشده).');
-        }
+        $ssh = $this->connectSsh($host, $username, $password, 'اتصال SSH ناموفق بود (احتمالاً سرور هنوز کاملاً آماده نشده).');
 
         $log = '';
         // No profile PrivateKey chosen for this server => no WireGuard,
@@ -176,6 +171,39 @@ YAML;
     }
 
     /**
+     * A droplet that just answered an ICMP ping (which is all the "replace
+     * server" flow waits for before handing off here) doesn't necessarily
+     * have sshd up yet — cloud-init/systemd can still be a few seconds
+     * behind the network coming up, and DigitalOcean marking the create
+     * action "completed" isn't a guarantee either. Retries connection
+     * refused/timeout instead of failing the whole install over a race.
+     */
+    protected function connectSsh(string $host, string $username, string $password, string $failureMessage): SSH2
+    {
+        $maxAttempts = 6;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $ssh = new SSH2($host, 22);
+            $ssh->setTimeout(20);
+
+            try {
+                if ($ssh->login($username, $password)) {
+                    return $ssh;
+                }
+            } catch (Throwable) {
+                // connection refused/timed out/etc. — treated the same as a
+                // failed login below: wait and retry.
+            }
+
+            if ($attempt < $maxAttempts) {
+                sleep(10);
+            }
+        }
+
+        throw new RuntimeException($failureMessage);
+    }
+
+    /**
      * (Re)applies every saved WireGuard config to an already-set-up node,
      * without touching Docker/the node container. Used both by the initial
      * install and by the standalone "update WireGuards" action.
@@ -184,12 +212,7 @@ YAML;
      */
     public function updateWireguards(string $host, string $username, string $password, ?string $wireguardPrivateKey = null): array
     {
-        $ssh = new SSH2($host, 22);
-        $ssh->setTimeout(20);
-
-        if (! $ssh->login($username, $password)) {
-            throw new RuntimeException('اتصال SSH ناموفق بود (احتمالاً پسورد اشتباه است).');
-        }
+        $ssh = $this->connectSsh($host, $username, $password, 'اتصال SSH ناموفق بود (احتمالاً پسورد اشتباه است یا سرور در دسترس نیست).');
 
         $configs = $wireguardPrivateKey !== null ? WireguardLocation::all() : collect();
 
