@@ -42,8 +42,8 @@ class ReplaceServerConversation extends InlineMenu
             'ادامه بدهم؟'
         );
         $this->addButtonRow(
-            InlineKeyboardButton::make('✅ بله، شروع کن', callback_data: 'yes@confirmReplace'),
             InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@cancel'),
+            InlineKeyboardButton::make('✅ بله، شروع کن', callback_data: 'yes@confirmReplace'),
         );
         $this->showMenu();
     }

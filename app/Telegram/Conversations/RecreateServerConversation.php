@@ -43,8 +43,8 @@ class RecreateServerConversation extends InlineMenu
             'مطمئن هستید؟'
         );
         $this->addButtonRow(
-            InlineKeyboardButton::make('✅ بله، دوباره بساز', callback_data: 'yes@confirmRecreate'),
             InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@cancel'),
+            InlineKeyboardButton::make('✅ بله، دوباره بساز', callback_data: 'yes@confirmRecreate'),
         );
         $this->showMenu();
     }

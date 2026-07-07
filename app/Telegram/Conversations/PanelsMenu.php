@@ -86,8 +86,8 @@ class PanelsMenu extends InlineMenu
             'این کار سرورهای واقعی شما را حذف نمی‌کند، فقط دسترسی ربات به آن‌ها قطع می‌شود.'
         );
         $this->addButtonRow(
-            InlineKeyboardButton::make('✅ بله، حذف کن', callback_data: "{$panel->id}@doDelete"),
             InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToList'),
+            InlineKeyboardButton::make('✅ بله، حذف کن', callback_data: "{$panel->id}@doDelete"),
         );
         $this->showMenu();
     }

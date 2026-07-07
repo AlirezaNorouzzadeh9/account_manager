@@ -101,8 +101,8 @@ class WireguardMenu extends InlineMenu
         $this->clearButtons();
         $this->menuText("آیا از حذف لوکیشن «{$location->name}» مطمئن هستید؟");
         $this->addButtonRow(
-            InlineKeyboardButton::make('✅ بله، حذف کن', callback_data: 'yes@doDeleteLocation'),
             InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@showLocationAgain'),
+            InlineKeyboardButton::make('✅ بله، حذف کن', callback_data: 'yes@doDeleteLocation'),
         );
         $this->showMenu();
     }

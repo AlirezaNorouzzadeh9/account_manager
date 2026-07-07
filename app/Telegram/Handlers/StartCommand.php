@@ -20,14 +20,18 @@ class StartCommand
 
     public static function keyboard(): InlineKeyboardMarkup
     {
+        // Telegram lays out a row strictly in array order, left-to-right —
+        // it does NOT auto-mirror for RTL languages — so for this
+        // Persian-language bot, the logically-first button of each row is
+        // listed second/last here to land on the right.
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('🖥 پنل‌های من', callback_data: 'panels:menu'),
                 InlineKeyboardButton::make('➕ ساخت سرور', callback_data: 'server:create'),
+                InlineKeyboardButton::make('🖥 پنل‌های من', callback_data: 'panels:menu'),
             )
             ->addRow(
-                InlineKeyboardButton::make('📋 سرورهای من', callback_data: 'server:list'),
                 InlineKeyboardButton::make('⚙️ تنظیمات', callback_data: 'settings:menu'),
+                InlineKeyboardButton::make('📋 سرورهای من', callback_data: 'server:list'),
             );
     }
 }

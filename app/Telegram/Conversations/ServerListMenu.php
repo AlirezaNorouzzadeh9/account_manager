@@ -289,8 +289,8 @@ class ServerListMenu extends InlineMenu
                 $this->clearButtons();
                 $this->menuText("برای تغییر پلن، سرور باید ابتدا خاموش شود.\nآیا الان خاموش شود؟");
                 $this->addButtonRow(
-                    InlineKeyboardButton::make('⏻ خاموش کن', callback_data: 'x@powerOff'),
                     InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToServer'),
+                    InlineKeyboardButton::make('⏻ خاموش کن', callback_data: 'x@powerOff'),
                 );
                 $this->showMenu();
                 return;
@@ -354,8 +354,8 @@ class ServerListMenu extends InlineMenu
         $this->clearButtons();
         $this->menuText("⚠️ با نصب مجدد «{$data}»، تمام دیتای فعلی سرور پاک می‌شود.\nمطمئن هستید؟");
         $this->addButtonRow(
-            InlineKeyboardButton::make('✅ بله، ریبیلد کن', callback_data: 'yes@doRebuild'),
             InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'),
+            InlineKeyboardButton::make('✅ بله، ریبیلد کن', callback_data: 'yes@doRebuild'),
         );
         $this->showMenu();
     }
@@ -394,8 +394,8 @@ class ServerListMenu extends InlineMenu
         $this->clearButtons();
         $this->menuText("آی‌پی رزرو فعلی سرور: {$current[0]['ip']}\nآیا می‌خواهید آن را با یک آی‌پی جدید جایگزین کنید؟");
         $this->addButtonRow(
-            InlineKeyboardButton::make('✅ بله، جایگزین کن', callback_data: 'yes@replaceReservedIp'),
             InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'),
+            InlineKeyboardButton::make('✅ بله، جایگزین کن', callback_data: 'yes@replaceReservedIp'),
         );
         $this->showMenu();
     }
@@ -473,8 +473,8 @@ class ServerListMenu extends InlineMenu
             'این عملیات چند دقیقه طول می‌کشد. ادامه بدهم؟'
         );
         $this->addButtonRow(
-            InlineKeyboardButton::make('✅ بله، نصب کن', callback_data: 'yes@installNode'),
             InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'),
+            InlineKeyboardButton::make('✅ بله، نصب کن', callback_data: 'yes@installNode'),
         );
         $this->showMenu();
     }
@@ -516,8 +516,8 @@ class ServerListMenu extends InlineMenu
         $this->clearButtons();
         $this->menuText('⚠️ آیا از حذف کامل این سرور مطمئن هستید؟ این عملیات غیرقابل بازگشت است.');
         $this->addButtonRow(
-            InlineKeyboardButton::make('✅ بله، حذف کن', callback_data: 'yes@doDeleteServer'),
             InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'),
+            InlineKeyboardButton::make('✅ بله، حذف کن', callback_data: 'yes@doDeleteServer'),
         );
         $this->showMenu();
     }
