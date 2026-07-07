@@ -62,11 +62,14 @@ class CreateServerFinalReportJob implements ShouldQueue
         $keyboard = null;
 
         if ($this->panelId && $this->serverId) {
-            // Always offered, even on a clean ping — the user may still
-            // want a fresh IP/droplet for other reasons.
+            // Always offered, even on a clean ping — the user may still want
+            // a fresh IP/droplet for other reasons. This is the plain
+            // delete+recreate flow (RecreateServerConversation), not the
+            // safer "replace" one: nothing is installed on this server yet,
+            // so there's nothing to lose or re-apply.
             $keyboard = InlineKeyboardMarkup::make()
                 ->addRow(InlineKeyboardButton::make('🔍 مشاهده سرور', callback_data: "view_server:{$this->panelId}:{$this->serverId}"))
-                ->addRow(InlineKeyboardButton::make('🔄 تغییر سرور', callback_data: "replace_server:{$this->panelId}:{$this->serverId}"));
+                ->addRow(InlineKeyboardButton::make('🔄 تغییر سرور', callback_data: "recreate_server:{$this->panelId}:{$this->serverId}"));
         }
 
         $bot->sendMessage($message, chat_id: $this->chatId, reply_markup: $keyboard);

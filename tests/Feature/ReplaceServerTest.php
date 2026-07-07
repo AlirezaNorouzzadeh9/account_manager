@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\CheckServerPingJob;
 use App\Jobs\CreateServerFinalReportJob;
+use App\Jobs\CreateServerReadyJob;
 use App\Jobs\ReplaceServerFinishJob;
 use App\Jobs\ReplaceServerPingCheckJob;
 use App\Jobs\ReplaceServerPollJob;
@@ -74,7 +75,7 @@ class ReplaceServerTest extends TestCase
         $this->assertFalse($client->allNodesOk([]));
     }
 
-    public function test_final_report_adds_replace_button_when_ping_incomplete(): void
+    public function test_final_report_adds_recreate_button_when_ping_incomplete(): void
     {
         Http::fake([
             'check-host.net/check-result/*' => Http::response([
@@ -92,10 +93,10 @@ class ReplaceServerTest extends TestCase
         [$request] = array_values(end($history));
         $body = json_decode((string) $request->getBody(), true);
 
-        $this->assertStringContainsString('replace_server:5:99', json_encode($body['reply_markup']));
+        $this->assertStringContainsString('recreate_server:5:99', json_encode($body['reply_markup']));
     }
 
-    public function test_final_report_adds_replace_button_even_when_ping_complete(): void
+    public function test_final_report_adds_recreate_button_even_when_ping_complete(): void
     {
         Http::fake([
             'check-host.net/check-result/*' => Http::response([
@@ -113,7 +114,50 @@ class ReplaceServerTest extends TestCase
         [$request] = array_values(end($history));
         $body = json_decode((string) $request->getBody(), true);
 
-        $this->assertStringContainsString('replace_server:5:100', json_encode($body['reply_markup']));
+        $this->assertStringContainsString('recreate_server:5:100', json_encode($body['reply_markup']));
+    }
+
+    public function test_recreate_conversation_deletes_then_recreates_with_no_node_or_wireguard(): void
+    {
+        Queue::fake();
+        [$panel, ] = $this->makePanelAndSecret(111);
+
+        Http::fake([
+            'api.digitalocean.com/v2/droplets/111' => Http::response([], 204),
+            'api.digitalocean.com/v2/droplets' => Http::response([
+                'droplet' => ['id' => 222, 'name' => 'srv-old'],
+                'links' => ['actions' => [['id' => 999, 'rel' => 'create', 'href' => '']]],
+            ]),
+        ]);
+
+        config(['bot.admins' => ['555']]);
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+        $bot->setCommonUser(User::make(id: 555, is_bot: false, first_name: 'Tester'));
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData("recreate_server:{$panel->id}:111")->reply();
+        $bot->hearCallbackQueryData('yes')->reply();
+
+        Http::assertSent(fn ($request) => $request->method() === 'DELETE'
+            && str_contains((string) $request->url(), '/droplets/111'));
+
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && str_contains((string) $request->url(), '/droplets')
+            && ($request['name'] ?? null) === 'srv-old'
+            && ($request['region'] ?? null) === 'nyc1');
+
+        $this->assertDatabaseHas('server_secrets', [
+            'panel_id' => $panel->id,
+            'provider_server_id' => 222,
+            'hostname' => 'srv-old',
+        ]);
+
+        // The normal create pipeline, NOT the node/WireGuard-reinstalling replace flow.
+        Queue::assertPushed(CreateServerReadyJob::class);
+        Queue::assertNotPushed(ReplaceServerPollJob::class);
+        Queue::assertNotPushed(ReplaceServerFinishJob::class);
     }
 
     public function test_confirming_replace_creates_a_new_server_without_touching_the_old_one(): void

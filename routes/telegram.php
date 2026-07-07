@@ -7,6 +7,7 @@ use App\Telegram\Conversations\AddPanelConversation;
 use App\Telegram\Conversations\CreateServerConversation;
 use App\Telegram\Conversations\NodePasswordConversation;
 use App\Telegram\Conversations\PanelsMenu;
+use App\Telegram\Conversations\RecreateServerConversation;
 use App\Telegram\Conversations\ReplaceServerConversation;
 use App\Telegram\Conversations\ServerListMenu;
 use App\Telegram\Conversations\SettingsMenu;
@@ -66,6 +67,21 @@ $bot->onCallbackQueryData(
     )
 );
 
+// Offered on a JUST-CREATED server's ping report — nothing is installed on
+// it yet, so a plain delete+recreate is enough (see RecreateServerConversation).
+$bot->onCallbackQueryData(
+    'recreate_server:{panelId}:{serverId}',
+    fn (Nutgram $bot, int $panelId, string $serverId) => RecreateServerConversation::begin(
+        $bot,
+        $bot->userId(),
+        $bot->chatId(),
+        [$panelId, $serverId]
+    )
+);
+
+// Offered on the periodic ping-monitor alert for an already-in-use server —
+// creates the replacement FIRST and re-applies the old node/WireGuard setup
+// before ever touching the original (see ReplaceServerConversation).
 $bot->onCallbackQueryData(
     'replace_server:{panelId}:{serverId}',
     fn (Nutgram $bot, int $panelId, string $serverId) => ReplaceServerConversation::begin(
