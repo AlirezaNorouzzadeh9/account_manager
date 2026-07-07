@@ -55,11 +55,13 @@ class ReplaceServerFinishJob implements ShouldQueue
         $privateKey = $newSecret->wireguardProfile?->private_key;
 
         $domain = null;
+        $dnsWarning = null;
 
         try {
             $result = $installer->install($this->newIp, 'root', $newSecret->root_password, $privateKey, $newSecret->hostname);
             $statusMessage = ($result['success'] ? '✅ ' : '⚠️ ').$result['message'];
             $domain = $result['domain'] ?? null;
+            $dnsWarning = $result['dns_warning'] ?? null;
         } catch (Throwable $e) {
             $statusMessage = "⚠️ سرور جایگزین ساخته شد ولی نصب نود ناموفق بود:\n{$e->getMessage()}\n".
                 'می‌توانید بعداً دستی از «اطلاعات سرور» نود کنید.';
@@ -76,11 +78,13 @@ class ReplaceServerFinishJob implements ShouldQueue
             ));
 
         $domainLine = $domain ? "🪪 آدرس نود (برای پنل PasarGuard): `{$domain}`\n\n" : '';
+        $dnsWarningLine = $dnsWarning ? "⚠️ {$dnsWarning}\n\n" : '';
 
         $bot->sendMessage(
             "{$statusMessage}\n\n".
             "🌐 آی‌پی جدید: `{$this->newIp}`\n\n".
             $domainLine.
+            $dnsWarningLine.
             'سرور قبلی هنوز حذف نشده. اگر همه چیز روی سرور جدید مرتب است، برای حذف سرور قبلی تایید کنید:',
             chat_id: $this->chatId,
             reply_markup: $keyboard,

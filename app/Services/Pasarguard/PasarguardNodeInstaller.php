@@ -61,7 +61,7 @@ services:
 YAML;
 
     /**
-     * @return array{success: bool, message: string, log: string, cert: string, domain: ?string}
+     * @return array{success: bool, message: string, log: string, cert: string, domain: ?string, dns_warning: ?string}
      */
     public function install(
         string $host,
@@ -100,6 +100,7 @@ YAML;
                 'log' => $log,
                 'cert' => '',
                 'domain' => null,
+                'dns_warning' => null,
             ];
         }
 
@@ -111,7 +112,7 @@ YAML;
 
         $this->writeRemoteFile($ssh, self::REMOTE_DIR.'/docker-compose.yml', self::COMPOSE_YAML);
         $this->writeRemoteFile($ssh, self::REMOTE_DIR.'/node-1/.env', $this->buildEnvFile($wireguardConfigs->isNotEmpty()));
-        [$certLog, $certContent, $domain] = $this->setUpCertificate($ssh, $host, $hostname);
+        [$certLog, $certContent, $domain, $dnsWarning] = $this->setUpCertificate($ssh, $host, $hostname);
         $log .= $certLog;
 
         // A fresh droplet's network/DNS can still be settling right after boot
@@ -151,6 +152,7 @@ YAML;
                 'log' => $log,
                 'cert' => $certContent,
                 'domain' => $domain,
+                'dns_warning' => $dnsWarning,
             ];
         }
 
@@ -166,6 +168,7 @@ YAML;
             'log' => $log,
             'cert' => $certContent,
             'domain' => $domain,
+            'dns_warning' => $dnsWarning,
         ];
     }
 
@@ -324,14 +327,14 @@ YAML;
      * fixed wildcard cert (if Cloudflare credentials + a hostname are
      * available) or the classic per-node, IP-bound one otherwise.
      *
-     * @return array{0: string, 1: string, 2: ?string} [log excerpt, cert PEM content, domain used (if any)]
+     * @return array{0: string, 1: string, 2: ?string, 3: ?string} [log excerpt, cert PEM content, domain used (if any), DNS failure warning (if any)]
      */
     protected function setUpCertificate(SSH2 $ssh, string $ip, ?string $hostname): array
     {
         if ($hostname === null || ! $this->dnsConfigured()) {
             [$log, $cert] = $this->generateNodeCertificate($ssh, $ip);
 
-            return [$log, $cert, null];
+            return [$log, $cert, null, null];
         }
 
         $domain = "{$hostname}.".config('dns.cloudflare.node_domain');
@@ -340,16 +343,19 @@ YAML;
             $this->dnsClient()->upsertARecord($domain, $ip);
         } catch (Throwable $e) {
             // DNS is best-effort here — fall back to the classic per-IP cert
-            // rather than failing the whole install over it.
+            // rather than failing the whole install over it. The failure
+            // reason is still returned (not just logged) so it isn't
+            // silently swallowed when the rest of the install succeeds.
             [$log, $cert] = $this->generateNodeCertificate($ssh, $ip);
+            $warning = "ثبت رکورد DNS برای {$domain} ناموفق بود: {$e->getMessage()}";
 
-            return ["\$ Cloudflare DNS record for {$domain} failed: {$e->getMessage()}\n".$log, $cert, null];
+            return ["\$ Cloudflare DNS record for {$domain} failed: {$e->getMessage()}\n".$log, $cert, null, $warning];
         }
 
         [$certificate, $privateKey] = $this->ensureFixedCertificate($ssh);
         $this->installCertificate($ssh, $certificate, $privateKey);
 
-        return ["\$ using fixed wildcard certificate (domain: {$domain})\n", $certificate, $domain];
+        return ["\$ using fixed wildcard certificate (domain: {$domain})\n", $certificate, $domain, null];
     }
 
     protected function dnsConfigured(): bool

@@ -95,6 +95,13 @@ class InstallPasarguardNodeJob implements ShouldQueue
             $message .= "\n\n".$this->condenseLog($result['log']);
         }
 
+        // Shown regardless of overall success — DNS is best-effort and
+        // silently falling back to the per-IP cert without saying why made
+        // this impossible to debug from the chat alone.
+        if (! empty($result['dns_warning'])) {
+            $message .= "\n\n⚠️ {$result['dns_warning']}";
+        }
+
         if (! empty($result['cert'])) {
             $message .= "\n\nگواهی SSL این نود (برای ثبت در پنل PasarGuard):\n{$result['cert']}";
         }

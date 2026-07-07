@@ -331,7 +331,7 @@ class ReplaceServerTest extends TestCase
         $installer->shouldReceive('install')
             ->once()
             ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key', 'srv-old')
-            ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => '', 'domain' => null]);
+            ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => '', 'domain' => null, 'dns_warning' => null]);
         $this->app->instance(PasarguardNodeInstaller::class, $installer);
 
         /** @var FakeNutgram $bot */
