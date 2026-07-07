@@ -166,7 +166,8 @@ class PasarguardNodeTest extends TestCase
         $compose = $ref->getConstant('COMPOSE_YAML');
         $this->assertStringContainsString('image: pasarguard/node:latest', $compose);
         $this->assertStringContainsString('env_file: node-1/.env', $compose);
-        $this->assertStringContainsString('"8743:62050"', $compose);
+        $this->assertStringContainsString('network_mode: host', $compose);
+        $this->assertStringNotContainsString('ports:', $compose);
     }
 
     public function test_location_config_uses_fixed_defaults_and_the_given_private_key(): void

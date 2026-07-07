@@ -54,16 +54,13 @@ services:
     container_name: node-1
     image: pasarguard/node:latest
     restart: always
+    network_mode: host
     privileged: true
     cap_add:
       - NET_ADMIN
     env_file: node-1/.env
     volumes:
       - /var/lib/pg-node-1:/var/lib/pg-node-1
-    ports:
-      - "8743:62050"
-      - "451-460:451-460"
-      - "1555:1555"
 YAML;
 
     /**
