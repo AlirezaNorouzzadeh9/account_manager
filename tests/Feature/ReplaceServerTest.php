@@ -10,7 +10,6 @@ use App\Jobs\ReplaceServerPingCheckJob;
 use App\Jobs\ReplaceServerPollJob;
 use App\Models\Panel;
 use App\Models\ServerSecret;
-use App\Models\WireguardProfile;
 use App\Services\CheckHost\CheckHostClient;
 use App\Services\Pasarguard\PasarguardNodeInstaller;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -217,7 +216,7 @@ class ReplaceServerTest extends TestCase
         /** @var FakeNutgram $bot */
         $bot = $this->app->make(Nutgram::class);
 
-        $job = new ReplaceServerPollJob($panel->id, '111', 999, 'srv-old', 'nyc1', 's-1vcpu-1gb', 'ubuntu-24-04-x64', null, $bot->chatId() ?? 1, 1);
+        $job = new ReplaceServerPollJob($panel->id, '111', 999, 'srv-old', 'nyc1', 's-1vcpu-1gb', 'ubuntu-24-04-x64', $bot->chatId() ?? 1, 1);
         $job->handle($bot, new CheckHostClient());
 
         Queue::assertPushed(ReplaceServerPingCheckJob::class, function ($job) {
@@ -242,7 +241,7 @@ class ReplaceServerTest extends TestCase
         /** @var FakeNutgram $bot */
         $bot = $this->app->make(Nutgram::class);
 
-        $job = new ReplaceServerPingCheckJob('req-abc', $panel->id, '111', '222', '9.9.9.9', 'srv-old', 'nyc1', 's-1vcpu-1gb', 'ubuntu-24-04-x64', null, $bot->chatId() ?? 1, 1);
+        $job = new ReplaceServerPingCheckJob('req-abc', $panel->id, '111', '222', '9.9.9.9', 'srv-old', 'nyc1', 's-1vcpu-1gb', 'ubuntu-24-04-x64', $bot->chatId() ?? 1, 1);
         $job->handle($bot, new CheckHostClient());
 
         Http::assertNotSent(fn ($request) => $request->method() === 'DELETE');
@@ -271,7 +270,7 @@ class ReplaceServerTest extends TestCase
         /** @var FakeNutgram $bot */
         $bot = $this->app->make(Nutgram::class);
 
-        $job = new ReplaceServerPingCheckJob('req-abc', $panel->id, '111', '222', '9.9.9.9', 'srv-old', 'nyc1', 's-1vcpu-1gb', 'ubuntu-24-04-x64', null, $bot->chatId() ?? 1, 1);
+        $job = new ReplaceServerPingCheckJob('req-abc', $panel->id, '111', '222', '9.9.9.9', 'srv-old', 'nyc1', 's-1vcpu-1gb', 'ubuntu-24-04-x64', $bot->chatId() ?? 1, 1);
         $job->handle($bot, new CheckHostClient());
 
         Http::assertSent(fn ($request) => $request->method() === 'DELETE'
@@ -297,7 +296,7 @@ class ReplaceServerTest extends TestCase
         $bot = $this->app->make(Nutgram::class);
 
         $job = new ReplaceServerPingCheckJob(
-            'req-abc', $panel->id, '111', '222', '9.9.9.9', 'srv-old', 'nyc1', 's-1vcpu-1gb', 'ubuntu-24-04-x64', null,
+            'req-abc', $panel->id, '111', '222', '9.9.9.9', 'srv-old', 'nyc1', 's-1vcpu-1gb', 'ubuntu-24-04-x64',
             $bot->chatId() ?? 1, ReplaceServerPollJob::MAX_ATTEMPTS,
         );
         $job->handle($bot, new CheckHostClient());
@@ -312,12 +311,11 @@ class ReplaceServerTest extends TestCase
         $this->assertStringContainsString('بعد از', $body['text']);
     }
 
-    public function test_finish_job_applies_wireguard_profile_and_sends_delete_confirmation(): void
+    public function test_finish_job_applies_node_and_wireguard_and_sends_delete_confirmation(): void
     {
         [$panel, ] = $this->makePanelAndSecret(111);
-        $profile = WireguardProfile::create(['name' => 'Profile 1']);
 
-        $newSecret = ServerSecret::create([
+        ServerSecret::create([
             'panel_id' => $panel->id,
             'provider_server_id' => 222,
             'root_password' => 'new-password',
@@ -330,17 +328,15 @@ class ReplaceServerTest extends TestCase
         $installer = \Mockery::mock(PasarguardNodeInstaller::class);
         $installer->shouldReceive('install')
             ->once()
-            ->with('9.9.9.9', 'root', 'new-password', $profile->id)
+            ->with('9.9.9.9', 'root', 'new-password')
             ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => '']);
         $this->app->instance(PasarguardNodeInstaller::class, $installer);
 
         /** @var FakeNutgram $bot */
         $bot = $this->app->make(Nutgram::class);
 
-        $job = new ReplaceServerFinishJob($panel->id, '111', '222', '9.9.9.9', $profile->id, $bot->chatId() ?? 1);
+        $job = new ReplaceServerFinishJob($panel->id, '111', '222', '9.9.9.9', $bot->chatId() ?? 1);
         $job->handle($bot, $this->app->make(PasarguardNodeInstaller::class));
-
-        $this->assertSame($profile->id, $newSecret->fresh()->wireguard_profile_id);
 
         $history = $bot->getRequestHistory();
         [$request] = array_values(end($history));

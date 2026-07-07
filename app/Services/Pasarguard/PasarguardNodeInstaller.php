@@ -2,7 +2,8 @@
 
 namespace App\Services\Pasarguard;
 
-use App\Models\WireguardConfig;
+use App\Models\WireguardLocation;
+use App\Models\WireguardSettings;
 use Illuminate\Support\Collection;
 use phpseclib3\Net\SSH2;
 use RuntimeException;
@@ -44,7 +45,7 @@ YAML;
     /**
      * @return array{success: bool, message: string, log: string}
      */
-    public function install(string $host, string $username, string $password, ?int $wireguardProfileId = null): array
+    public function install(string $host, string $username, string $password): array
     {
         $ssh = new SSH2($host, 22);
         $ssh->setTimeout(20);
@@ -54,7 +55,7 @@ YAML;
         }
 
         $log = '';
-        $wireguardConfigs = $this->configsForProfile($wireguardProfileId);
+        $wireguardConfigs = WireguardLocation::all();
 
         // A just-booted droplet may still be running its first-boot apt
         // operations (cloud-init), holding the dpkg lock — wait it out first,
@@ -146,7 +147,7 @@ YAML;
      *
      * @return array{success: bool, message: string, log: string}
      */
-    public function updateWireguards(string $host, string $username, string $password, ?int $wireguardProfileId = null): array
+    public function updateWireguards(string $host, string $username, string $password): array
     {
         $ssh = new SSH2($host, 22);
         $ssh->setTimeout(20);
@@ -155,7 +156,7 @@ YAML;
             throw new RuntimeException('اتصال SSH ناموفق بود (احتمالاً پسورد اشتباه است).');
         }
 
-        $configs = $this->configsForProfile($wireguardProfileId);
+        $configs = WireguardLocation::all();
 
         if ($configs->isNotEmpty()) {
             $this->ensureWireguardTools($ssh);
@@ -176,17 +177,34 @@ YAML;
     }
 
     /**
-     * Configs belonging to the given WireGuard profile, or an empty
-     * collection when no profile is selected for this server (the "بدون
-     * وایرگارد" choice).
+     * Builds the full wg-quick text for one location: the location's own
+     * ip/server_public_key/private_key combined with the shared settings
+     * (address/dns/allowed_ips/port/table) that are identical for every
+     * location.
      */
-    protected function configsForProfile(?int $wireguardProfileId): Collection
+    protected function buildLocationConfig(WireguardLocation $location, WireguardSettings $settings): string
     {
-        if ($wireguardProfileId === null) {
-            return collect();
+        $lines = [
+            '[Interface]',
+            "Address = {$settings->address}",
+            "PrivateKey = {$location->private_key}",
+        ];
+
+        if ($settings->dns) {
+            $lines[] = "DNS = {$settings->dns}";
         }
 
-        return WireguardConfig::where('wireguard_profile_id', $wireguardProfileId)->oldest()->get();
+        if ($settings->routing_table) {
+            $lines[] = "Table = {$settings->routing_table}";
+        }
+
+        $lines[] = '';
+        $lines[] = '[Peer]';
+        $lines[] = "PublicKey = {$location->server_public_key}";
+        $lines[] = "AllowedIPs = {$settings->allowed_ips}";
+        $lines[] = "Endpoint = {$location->ip}:{$settings->port}";
+
+        return implode("\n", $lines);
     }
 
     /**
@@ -221,6 +239,7 @@ YAML;
         $log = '';
         $allUp = true;
         $usedNames = [];
+        $settings = WireguardSettings::current();
 
         // Units for wg-quick@ may have just been installed by ensureWireguardTools()
         // above; reload so systemd actually sees them before we enable anything.
@@ -229,7 +248,7 @@ YAML;
         foreach ($configs->values() as $config) {
             $iface = $this->sanitizeInterfaceName($config->name, $usedNames);
 
-            $this->writeRemoteFile($ssh, "/etc/wireguard/{$iface}.conf", $config->config);
+            $this->writeRemoteFile($ssh, "/etc/wireguard/{$iface}.conf", $this->buildLocationConfig($config, $settings));
             $this->run($ssh, 'chmod 600 '.escapeshellarg("/etc/wireguard/{$iface}.conf"));
             $enableOutput = $this->run($ssh, "systemctl enable --now wg-quick@{$iface} 2>&1");
 

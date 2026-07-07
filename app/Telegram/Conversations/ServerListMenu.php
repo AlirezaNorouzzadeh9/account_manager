@@ -7,7 +7,6 @@ use App\Jobs\PollProviderActionJob;
 use App\Jobs\UpdateWireguardsJob;
 use App\Models\Panel;
 use App\Models\ServerSecret;
-use App\Models\WireguardProfile;
 use App\Services\Providers\DigitalOcean\DigitalOceanClient;
 use App\Services\Providers\ProviderClient;
 use App\Services\Providers\ProviderException;
@@ -29,9 +28,6 @@ class ServerListMenu extends InlineMenu
     protected int $page = 1;
     protected int|string|null $serverId = null;
     protected ?string $pendingImage = null;
-
-    /** 'none' or a numeric WireguardProfile id, chosen right before install/update-wireguards. */
-    protected ?string $pendingProfile = null;
 
     protected function panel(): Panel
     {
@@ -72,12 +68,10 @@ class ServerListMenu extends InlineMenu
 
         $this->menuText('سرورهای کدام پنل را می‌خواهید ببینید؟');
 
-        foreach ($panels as $panel) {
-            $this->addButtonRow(InlineKeyboardButton::make(
-                "{$panel->name} ({$panel->provider->label()})",
-                callback_data: "{$panel->id}@choosePanel"
-            ));
-        }
+        $this->addButtonGrid($panels->map(fn (Panel $panel) => InlineKeyboardButton::make(
+            "🖥 {$panel->name} ({$panel->provider->label()})",
+            callback_data: "{$panel->id}@choosePanel"
+        ))->all());
 
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@cancel'));
         $this->showMenu();
@@ -121,8 +115,13 @@ class ServerListMenu extends InlineMenu
 
             foreach ($result['items'] as $server) {
                 $ip = collect($server['networks']['v4'] ?? [])->firstWhere('type', 'public')['ip_address'] ?? '-';
+                $statusIcon = match ($server['status'] ?? '') {
+                    'active' => '🟢',
+                    'off' => '🔴',
+                    default => '⚪',
+                };
                 $this->addButtonRow(InlineKeyboardButton::make(
-                    "{$server['name']} | {$server['status']} | {$ip}",
+                    "{$statusIcon} {$server['name']} | {$server['status']} | {$ip}",
                     callback_data: "{$server['id']}@showServer"
                 ));
             }
@@ -289,8 +288,10 @@ class ServerListMenu extends InlineMenu
             if (($server['status'] ?? null) !== 'off') {
                 $this->clearButtons();
                 $this->menuText("برای تغییر پلن، سرور باید ابتدا خاموش شود.\nآیا الان خاموش شود؟");
-                $this->addButtonRow(InlineKeyboardButton::make('⏻ خاموش کن', callback_data: 'x@powerOff'));
-                $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToServer'));
+                $this->addButtonRow(
+                    InlineKeyboardButton::make('⏻ خاموش کن', callback_data: 'x@powerOff'),
+                    InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToServer'),
+                );
                 $this->showMenu();
                 return;
             }
@@ -305,7 +306,7 @@ class ServerListMenu extends InlineMenu
         $this->menuText('پلن جدید را انتخاب کنید:');
 
         $this->addButtonGrid(array_map(function (array $s) {
-            $label = sprintf('%s | %dvCPU/%dMB | $%s', $s['slug'], $s['vcpus'], $s['memory'], $s['price_monthly']);
+            $label = sprintf('💽 %s | %dvCPU/%dMB | $%s', $s['slug'], $s['vcpus'], $s['memory'], $s['price_monthly']);
 
             return InlineKeyboardButton::make($label, callback_data: "{$s['slug']}@doResize");
         }, $sizes), perRow: 1);
@@ -338,7 +339,7 @@ class ServerListMenu extends InlineMenu
         $this->menuText("⚠️ ریبیلد تمام اطلاعات روی سرور را پاک می‌کند.\nسیستم‌عامل جدید را انتخاب کنید:");
 
         $this->addButtonGrid(array_map(
-            fn (array $img) => InlineKeyboardButton::make($img['label'], callback_data: "{$img['slug']}@confirmRebuild"),
+            fn (array $img) => InlineKeyboardButton::make("💿 {$img['label']}", callback_data: "{$img['slug']}@confirmRebuild"),
             $images
         ));
 
@@ -352,8 +353,10 @@ class ServerListMenu extends InlineMenu
 
         $this->clearButtons();
         $this->menuText("⚠️ با نصب مجدد «{$data}»، تمام دیتای فعلی سرور پاک می‌شود.\nمطمئن هستید؟");
-        $this->addButtonRow(InlineKeyboardButton::make('✅ بله، ریبیلد کن', callback_data: 'yes@doRebuild'));
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'));
+        $this->addButtonRow(
+            InlineKeyboardButton::make('✅ بله، ریبیلد کن', callback_data: 'yes@doRebuild'),
+            InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'),
+        );
         $this->showMenu();
     }
 
@@ -390,8 +393,10 @@ class ServerListMenu extends InlineMenu
 
         $this->clearButtons();
         $this->menuText("آی‌پی رزرو فعلی سرور: {$current[0]['ip']}\nآیا می‌خواهید آن را با یک آی‌پی جدید جایگزین کنید؟");
-        $this->addButtonRow(InlineKeyboardButton::make('✅ بله، جایگزین کن', callback_data: 'yes@replaceReservedIp'));
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'));
+        $this->addButtonRow(
+            InlineKeyboardButton::make('✅ بله، جایگزین کن', callback_data: 'yes@replaceReservedIp'),
+            InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'),
+        );
         $this->showMenu();
     }
 
@@ -441,39 +446,8 @@ class ServerListMenu extends InlineMenu
         $this->renderServerDetail($bot);
     }
 
-    /**
-     * Adds one button per saved WireGuard profile plus a "بدون وایرگارد"
-     * skip option, each routed to $callback with the picked value as data
-     * ('none' or the profile id).
-     */
-    protected function addProfileButtons(string $callback): void
-    {
-        foreach (WireguardProfile::withCount('configs')->get() as $profile) {
-            $this->addButtonRow(InlineKeyboardButton::make(
-                "🔒 {$profile->name} ({$profile->configs_count})",
-                callback_data: "{$profile->id}@{$callback}"
-            ));
-        }
-
-        $this->addButtonRow(InlineKeyboardButton::make('🚫 بدون وایرگارد', callback_data: "none@{$callback}"));
-    }
-
     public function confirmInstallNode(Nutgram $bot): void
     {
-        $this->clearButtons();
-        $this->menuText(
-            "🧩 این کار داکر را (در صورت نبود) روی سرور نصب می‌کند و یک نود پاسارگارد بالا می‌آورد.\n".
-            'کدام پروفایل وایرگارد روی این سرور فعال شود؟'
-        );
-        $this->addProfileButtons('chooseInstallProfile');
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'));
-        $this->showMenu();
-    }
-
-    public function chooseInstallProfile(Nutgram $bot, string $data): void
-    {
-        $this->pendingProfile = $data;
-
         $hasSecret = ServerSecret::where('panel_id', $this->panelId)
             ->where('provider_server_id', $this->serverId)
             ->exists();
@@ -488,27 +462,25 @@ class ServerListMenu extends InlineMenu
                 $bot,
                 $bot->userId(),
                 $bot->chatId(),
-                [$this->panelId, $this->serverId, 'install', $data]
+                [$this->panelId, $this->serverId, 'install']
             );
             return;
         }
 
         $this->clearButtons();
         $this->menuText(
-            "🧩 این کار داکر را (در صورت نبود) روی سرور نصب می‌کند و یک نود پاسارگارد بالا می‌آورد.\n".
+            "🧩 این کار داکر را (در صورت نبود) روی سرور نصب می‌کند، یک نود پاسارگارد بالا می‌آورد و همه‌ی لوکیشن‌های وایرگارد ذخیره‌شده را رویش فعال می‌کند.\n".
             'این عملیات چند دقیقه طول می‌کشد. ادامه بدهم؟'
         );
-        $this->addButtonRow(InlineKeyboardButton::make('✅ بله، نصب کن', callback_data: 'yes@installNode'));
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'));
+        $this->addButtonRow(
+            InlineKeyboardButton::make('✅ بله، نصب کن', callback_data: 'yes@installNode'),
+            InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'),
+        );
         $this->showMenu();
     }
 
     public function installNode(Nutgram $bot): void
     {
-        ServerSecret::where('panel_id', $this->panelId)
-            ->where('provider_server_id', $this->serverId)
-            ->update(['wireguard_profile_id' => $this->pendingProfile === 'none' ? null : (int) $this->pendingProfile]);
-
         InstallPasarguardNodeJob::dispatch($this->panelId, $this->serverId, $bot->chatId());
 
         $this->closeMenu('⏳ درخواست نود کردن سرور ثبت شد. به محض اتمام نتیجه را برایتان ارسال می‌کنم.');
@@ -516,15 +488,6 @@ class ServerListMenu extends InlineMenu
     }
 
     public function updateWireguards(Nutgram $bot): void
-    {
-        $this->clearButtons();
-        $this->menuText('کدام پروفایل وایرگارد روی این سرور فعال شود؟');
-        $this->addProfileButtons('chooseUpdateProfile');
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToServer'));
-        $this->showMenu();
-    }
-
-    public function chooseUpdateProfile(Nutgram $bot, string $data): void
     {
         $hasSecret = ServerSecret::where('panel_id', $this->panelId)
             ->where('provider_server_id', $this->serverId)
@@ -537,14 +500,10 @@ class ServerListMenu extends InlineMenu
                 $bot,
                 $bot->userId(),
                 $bot->chatId(),
-                [$this->panelId, $this->serverId, 'update_wireguards', $data]
+                [$this->panelId, $this->serverId, 'update_wireguards']
             );
             return;
         }
-
-        ServerSecret::where('panel_id', $this->panelId)
-            ->where('provider_server_id', $this->serverId)
-            ->update(['wireguard_profile_id' => $data === 'none' ? null : (int) $data]);
 
         UpdateWireguardsJob::dispatch($this->panelId, $this->serverId, $bot->chatId());
 
@@ -556,8 +515,10 @@ class ServerListMenu extends InlineMenu
     {
         $this->clearButtons();
         $this->menuText('⚠️ آیا از حذف کامل این سرور مطمئن هستید؟ این عملیات غیرقابل بازگشت است.');
-        $this->addButtonRow(InlineKeyboardButton::make('✅ بله، حذف کن', callback_data: 'yes@doDeleteServer'));
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'));
+        $this->addButtonRow(
+            InlineKeyboardButton::make('✅ بله، حذف کن', callback_data: 'yes@doDeleteServer'),
+            InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@backToServer'),
+        );
         $this->showMenu();
     }
 

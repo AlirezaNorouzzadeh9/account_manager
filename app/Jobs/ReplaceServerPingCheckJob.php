@@ -37,7 +37,6 @@ class ReplaceServerPingCheckJob implements ShouldQueue
         protected string $region,
         protected string $size,
         protected string $image,
-        protected ?int $wireguardProfileId,
         protected int $chatId,
         protected int $attempt,
     ) {
@@ -59,7 +58,6 @@ class ReplaceServerPingCheckJob implements ShouldQueue
                 $this->oldServerId,
                 $this->newServerId,
                 $this->newIp,
-                $this->wireguardProfileId,
                 $this->chatId,
             );
 
@@ -119,7 +117,6 @@ class ReplaceServerPingCheckJob implements ShouldQueue
             $this->region,
             $this->size,
             $this->image,
-            $this->wireguardProfileId,
             $this->chatId,
             $this->attempt + 1,
         );

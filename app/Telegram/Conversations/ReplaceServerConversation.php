@@ -18,7 +18,7 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
  * droplet's own IP never changes, so a new IP means a new droplet), waits
  * for the replacement's ping to be clean (auto retrying up to
  * ReplaceServerPollJob::MAX_ATTEMPTS times), re-applies the old server's
- * PasarGuard node + WireGuard profile onto it, and only THEN offers to
+ * PasarGuard node + WireGuard locations onto it, and only THEN offers to
  * delete the old server. The old server is never touched until the user
  * explicitly confirms that final delete.
  */
@@ -41,8 +41,10 @@ class ReplaceServerConversation extends InlineMenu
             'به‌محض پینگ سالم، نود + وایرگارد سرور فعلی روی آن پیاده می‌شود و سپس تایید شما برای حذف سرور فعلی گرفته می‌شود — تا آن لحظه سرور فعلی دست‌نخورده می‌ماند.'."\n\n".
             'ادامه بدهم؟'
         );
-        $this->addButtonRow(InlineKeyboardButton::make('✅ بله، شروع کن', callback_data: 'yes@confirmReplace'));
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@cancel'));
+        $this->addButtonRow(
+            InlineKeyboardButton::make('✅ بله، شروع کن', callback_data: 'yes@confirmReplace'),
+            InlineKeyboardButton::make('🔙 انصراف', callback_data: 'x@cancel'),
+        );
         $this->showMenu();
     }
 
@@ -84,7 +86,6 @@ class ReplaceServerConversation extends InlineMenu
                 $secret->region,
                 $secret->size,
                 $secret->image,
-                $secret->wireguard_profile_id,
                 $bot->chatId(),
                 1,
             );
