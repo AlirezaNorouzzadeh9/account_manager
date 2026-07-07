@@ -112,7 +112,8 @@ class InstallPasarguardNodeJob implements ShouldQueue
         // '_'/'*' inside the raw log or cert above can never break parsing.
         if (! empty($result['domain'])) {
             $bot->sendMessage(
-                "🌐 برای ثبت در پنل PasarGuard، به‌جای آی‌پی از این آدرس استفاده کنید:\n`{$result['domain']}`",
+                "🌐 برای ثبت در پنل PasarGuard، به‌جای آی‌پی از این آدرس استفاده کنید:\n`{$result['domain']}`\n\n".
+                'اگر این نود قبلاً با همین آدرس در پنل ثبت شده، چون آی‌پی پشت دامنه عوض شده، یک‌بار آن را از پنل PasarGuard ریست/ری‌استارت کنید تا تغییر اعمال شود.',
                 chat_id: $this->chatId,
                 parse_mode: 'Markdown',
             );

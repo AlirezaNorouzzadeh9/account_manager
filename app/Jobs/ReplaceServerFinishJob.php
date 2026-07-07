@@ -90,7 +90,10 @@ class ReplaceServerFinishJob implements ShouldQueue
             $oldServerLine = 'سرور قبلی هنوز حذف نشده. اگر همه چیز روی سرور جدید مرتب است، برای حذف سرور قبلی تایید کنید:';
         }
 
-        $domainLine = $domain ? "🪪 آدرس نود (برای پنل PasarGuard): `{$domain}`\n\n" : '';
+        $domainLine = $domain
+            ? "🪪 آدرس نود (برای پنل PasarGuard): `{$domain}`\n".
+                'چون آی‌پی پشت این دامنه عوض شده، یک‌بار این نود را از پنل PasarGuard ریست/ری‌استارت کنید تا آی‌پی جدید اعمال شود.'."\n\n"
+            : '';
         $dnsWarningLine = $dnsWarning ? "⚠️ {$dnsWarning}\n\n" : '';
 
         $bot->sendMessage(
