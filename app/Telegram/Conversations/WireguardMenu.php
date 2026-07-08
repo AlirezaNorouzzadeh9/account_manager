@@ -36,11 +36,17 @@ class WireguardMenu extends InlineMenu
 
         $locations = WireguardLocation::orderBy('name')->get();
 
+        $intro = "🔒 لوکیشن‌های وایرگارد — روی هر سروری که وایرگارد فعال شود، همه‌ی این‌ها با هم فعال می‌شوند\n".
+            "➕ افزودن لوکیشن — یک لوکیشن جدید اضافه کنید\n".
+            "🪪 پروفایل‌ها — مدیریت پروفایل‌های وایرگارد (PrivateKey هر سرور)\n\n";
+
         $this->clearButtons();
         $this->menuText(
-            $locations->isEmpty()
-                ? "هیچ لوکیشن وایرگاردی اضافه نکرده‌اید.\nبا «افزودن لوکیشن» شروع کنید."
-                : "لوکیشن‌های وایرگارد:\n(روی هر سروری که وایرگارد فعال شود، همه‌ی این‌ها با هم فعال می‌شوند)"
+            $intro.(
+                $locations->isEmpty()
+                    ? "هیچ لوکیشن وایرگاردی اضافه نکرده‌اید.\nبا «افزودن لوکیشن» شروع کنید."
+                    : 'لیست لوکیشن‌ها:'
+            )
         );
 
         $this->addButtonGrid($locations->map(fn (WireguardLocation $location) => InlineKeyboardButton::make(

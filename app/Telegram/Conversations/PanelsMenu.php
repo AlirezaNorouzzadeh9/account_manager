@@ -30,12 +30,15 @@ class PanelsMenu extends InlineMenu
 
         $panels = Panel::query()->latest()->get();
 
+        $intro = "🖥 پنل‌های سرویس‌دهنده — هر پنل یک اکانت ارائه‌دهنده (مثل DigitalOcean) است که سرورها رویش ساخته می‌شوند\n".
+            "➕ افزودن پنل — یک پنل جدید اضافه کنید\n\n";
+
         $this->clearButtons();
 
         if ($panels->isEmpty()) {
-            $this->menuText('هنوز هیچ پنلی اضافه نکرده‌اید.');
+            $this->menuText($intro.'هنوز هیچ پنلی اضافه نکرده‌اید.');
         } else {
-            $this->menuText('پنل‌های شما:');
+            $this->menuText($intro.'پنل‌های شما:');
             $this->addButtonGrid($panels->map(function (Panel $panel) {
                 $status = $panel->is_active ? '🟢' : '🔴';
 

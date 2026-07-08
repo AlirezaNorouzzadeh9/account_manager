@@ -17,7 +17,11 @@ class SettingsMenu extends InlineMenu
     {
         $this->editInPlaceFromCallback($bot);
         $this->clearButtons();
-        $this->menuText('⚙️ تنظیمات:');
+        $this->menuText(
+            "⚙️ تنظیمات\n\n".
+            "🔒 مدیریت وایرگاردها — لوکیشن‌ها و پروفایل‌های وایرگارد سرورها\n\n".
+            'یکی از گزینه‌های زیر را انتخاب کنید:'
+        );
         $this->addButtonRow(InlineKeyboardButton::make('🔒 مدیریت وایرگاردها', callback_data: 'x@wireguard'));
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت به منوی اصلی', callback_data: 'x@cancel'));
         $this->showMenu();

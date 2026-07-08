@@ -35,11 +35,16 @@ class WireguardProfileMenu extends InlineMenu
 
         $profiles = WireguardProfile::orderBy('name')->get();
 
+        $intro = "🪪 پروفایل‌های وایرگارد — هر پروفایل یک هویت (PrivateKey) است که موقع فعال‌سازی وایرگارد روی هر سرور انتخاب می‌شود\n".
+            "➕ افزودن پروفایل — یک پروفایل جدید بسازید\n\n";
+
         $this->clearButtons();
         $this->menuText(
-            $profiles->isEmpty()
-                ? "هیچ پروفایلی اضافه نکرده‌اید.\nبا «افزودن پروفایل» شروع کنید."
-                : 'پروفایل‌های وایرگارد:'
+            $intro.(
+                $profiles->isEmpty()
+                    ? "هیچ پروفایلی اضافه نکرده‌اید.\nبا «افزودن پروفایل» شروع کنید."
+                    : 'لیست پروفایل‌ها:'
+            )
         );
 
         $this->addButtonGrid($profiles->map(fn (WireguardProfile $profile) => InlineKeyboardButton::make(
