@@ -74,10 +74,16 @@ class AddPanelConversation extends InlineMenu
         }
 
         $this->name = $name;
+
+        $tokenUrl = match (Provider::from($this->provider)) {
+            Provider::Linode => 'https://cloud.linode.com/profile/tokens',
+            default => 'https://cloud.digitalocean.com/account/api/tokens',
+        };
+
         $bot->sendMessage(
             "توکن API را ارسال کنید.\n".
             "می‌توانید آن را از این آدرس بسازید:\n".
-            'https://cloud.digitalocean.com/account/api/tokens',
+            $tokenUrl,
             reply_markup: $this->backButton()
         );
         $this->next('receiveToken');

@@ -62,7 +62,7 @@ class DigitalOceanClient implements ProviderClient
      * Flag + country for a region slug, without any API call. Used to label
      * a single already-known region (e.g. in a server detail view).
      */
-    public static function regionFlag(string $slug): string
+    public function regionFlag(string $slug): string
     {
         $prefix = substr($slug, 0, 3);
 
@@ -135,7 +135,15 @@ class DigitalOceanClient implements ProviderClient
 
     public function createServer(array $data): array
     {
-        return $this->handle($this->http()->post('/droplets', $data));
+        // Whitelisted so a field only some OTHER provider's client needs
+        // (e.g. Linode's root_password, passed by ServerProvisioningService
+        // through the same generic $data array) can never leak into DO's
+        // request body.
+        $payload = array_intersect_key($data, array_flip([
+            'name', 'region', 'size', 'image', 'monitoring', 'ipv6', 'user_data', 'ssh_keys', 'backups', 'tags', 'vpc_uuid',
+        ]));
+
+        return $this->handle($this->http()->post('/droplets', $payload));
     }
 
     public function listServers(int $page = 1, int $perPage = 20): array
@@ -210,7 +218,7 @@ class DigitalOceanClient implements ProviderClient
         return $ips;
     }
 
-    public function allocateReservedIp(string $region): array
+    public function allocateReservedIp(string $region, int|string|null $dropletId = null): array
     {
         return $this->handle($this->http()->post('/reserved_ips', ['region' => $region]));
     }

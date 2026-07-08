@@ -18,6 +18,9 @@ interface ProviderClient
     /** @return array<int, array> list of regions/datacenters */
     public function regions(): array;
 
+    /** Flag emoji for a region slug/id, without an API call (e.g. for a server detail view). */
+    public function regionFlag(string $slug): string;
+
     /** @return array<int, array> list of sizes/plans, optionally filtered by region slug */
     public function sizes(?string $region = null): array;
 
@@ -49,7 +52,13 @@ interface ProviderClient
     /** @return array<int, array> reserved IPs, optionally filtered by the droplet they're assigned to */
     public function listReservedIps(int|string|null $dropletId = null): array;
 
-    public function allocateReservedIp(string $region): array;
+    /**
+     * $dropletId is optional for providers (DigitalOcean) that can allocate
+     * an unassigned floating IP in a region; providers that can only
+     * allocate an IP directly onto a server (Linode) require it and throw
+     * if it's omitted.
+     */
+    public function allocateReservedIp(string $region, int|string|null $dropletId = null): array;
 
     public function assignReservedIp(string $ip, int|string $dropletId): array;
 

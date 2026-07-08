@@ -8,7 +8,6 @@ use App\Jobs\UpdateWireguardsJob;
 use App\Models\Panel;
 use App\Models\ServerSecret;
 use App\Models\WireguardProfile;
-use App\Services\Providers\DigitalOcean\DigitalOceanClient;
 use App\Services\Providers\ProviderClient;
 use App\Services\Providers\ProviderException;
 use App\Services\Providers\ProviderManager;
@@ -128,7 +127,7 @@ class ServerListMenu extends InlineMenu
                     'off' => '🔴',
                     default => '⚪',
                 };
-                $flag = DigitalOceanClient::regionFlag($server['region']['slug'] ?? '');
+                $flag = $this->client()->regionFlag($server['region']['slug'] ?? '');
                 $regionName = $server['region']['name'] ?? $server['region']['slug'] ?? '-';
 
                 $this->addButtonRow(InlineKeyboardButton::make(
@@ -182,7 +181,7 @@ class ServerListMenu extends InlineMenu
             $reservedIp = '-';
         }
 
-        $flag = DigitalOceanClient::regionFlag($server['region']['slug'] ?? '');
+        $flag = $this->client()->regionFlag($server['region']['slug'] ?? '');
         $regionName = $server['region']['name'] ?? $server['region']['slug'] ?? '-';
 
         $size = $server['size'] ?? [];
@@ -259,6 +258,16 @@ class ServerListMenu extends InlineMenu
         }
 
         $this->setCallbackQueryOptions(['text' => $ack]);
+
+        // Unlike DigitalOcean, a Linode rebuild needs a fresh root password
+        // set in the same request (it has no other way to preserve access) —
+        // LinodeClient::rebuild() generates one and returns it here so it
+        // doesn't go stale in our own records.
+        if (! empty($action['root_password'])) {
+            ServerSecret::where('panel_id', $this->panelId)
+                ->where('provider_server_id', $this->serverId)
+                ->update(['root_password' => $action['root_password']]);
+        }
 
         if (! empty($action['id'])) {
             PollProviderActionJob::dispatch($this->panelId, $action['id'], $bot->chatId(), $success, $failure);
@@ -440,7 +449,7 @@ class ServerListMenu extends InlineMenu
     {
         try {
             $server = $this->client()->getServer($this->serverId);
-            $reserved = $this->client()->allocateReservedIp($server['region']['slug']);
+            $reserved = $this->client()->allocateReservedIp($server['region']['slug'], $this->serverId);
             $ip = $reserved['reserved_ip']['ip'] ?? null;
 
             if (! $ip) {

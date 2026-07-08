@@ -5,6 +5,7 @@ namespace App\Services\Providers;
 use App\Enums\Provider;
 use App\Models\Panel;
 use App\Services\Providers\DigitalOcean\DigitalOceanClient;
+use App\Services\Providers\Linode\LinodeClient;
 
 class ProviderManager
 {
@@ -13,6 +14,7 @@ class ProviderManager
      */
     protected static array $clients = [
         'digitalocean' => DigitalOceanClient::class,
+        'linode' => LinodeClient::class,
     ];
 
     public static function forPanel(Panel $panel): ProviderClient

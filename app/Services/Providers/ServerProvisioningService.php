@@ -43,7 +43,12 @@ class ServerProvisioningService
             'image' => $image,
             'monitoring' => true,
             'ipv6' => true,
+            // DigitalOcean sets the root password via this cloud-init script
+            // (it has no direct "password" field); Linode has a native
+            // root_pass field instead and uses root_password directly. Each
+            // client picks whichever key(s) it needs from this shared array.
             'user_data' => $userData,
+            'root_password' => $password,
         ]);
 
         $actionId = $result['links']['actions'][0]['id'] ?? null;

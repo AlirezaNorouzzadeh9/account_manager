@@ -55,6 +55,37 @@ class BotFlowTest extends TestCase
         $this->assertSame('dop_v1_fake_token_for_testing', $panel->api_token);
     }
 
+    public function test_add_panel_conversation_creates_a_linode_panel_with_the_linode_token_url(): void
+    {
+        Http::fake([
+            'api.linode.com/v4/account' => Http::response(['email' => 'owner@example.com']),
+        ]);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('panels:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply();
+        $bot->hearCallbackQueryData('linode')->reply();
+        $bot->hearText('My Linode Panel')->reply();
+
+        $history = $bot->getRequestHistory();
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+        $this->assertStringContainsString('cloud.linode.com/profile/tokens', $body['text']);
+
+        $bot->hearText('linode_fake_token_for_testing')->reply();
+
+        $this->assertDatabaseHas('panels', [
+            'name' => 'My Linode Panel',
+            'provider' => 'linode',
+        ]);
+
+        $panel = Panel::where('name', 'My Linode Panel')->first();
+        $this->assertSame('owner@example.com', $panel->meta['email']);
+    }
+
     public function test_rename_panel_updates_name(): void
     {
         $panel = Panel::create([
