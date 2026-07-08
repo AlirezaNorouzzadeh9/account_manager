@@ -39,6 +39,12 @@ class PasarguardNodeInstaller
     protected const REMOTE_DIR = '/root/pg-node-1';
     protected const DATA_DIR = '/var/lib/pg-node-1';
 
+    // The pasarguard/node image's own service ports — also what a freshly
+    // created panel node registration (see PasarguardPanelClient::createNode)
+    // needs to match.
+    public const NODE_PORT = 62050;
+    public const NODE_API_PORT = 62051;
+
     // Shared by every WireGuard location's [Interface]/[Peer] — only
     // ip/server_public_key (per WireguardLocation) and PrivateKey (per
     // WireguardProfile, chosen per server) actually vary.
@@ -511,7 +517,7 @@ YAML;
     protected function buildEnvFile(bool $hasWireguard): string
     {
         $lines = [
-            'SERVICE_PORT = 62050',
+            'SERVICE_PORT = '.self::NODE_PORT,
             'SSL_CERT_FILE = '.self::DATA_DIR.'/certs/ssl_cert.pem',
             'SSL_KEY_FILE = '.self::DATA_DIR.'/certs/ssl_key.pem',
             'API_KEY = '.config('pasarguard.api_key'),

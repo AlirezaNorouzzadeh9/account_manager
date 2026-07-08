@@ -333,8 +333,8 @@ class ReplaceServerTest extends TestCase
         $installer = \Mockery::mock(PasarguardNodeInstaller::class);
         $installer->shouldReceive('install')
             ->once()
-            ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key', 'Profile 1')
-            ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => '', 'domain' => null, 'dns_warning' => null]);
+            ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key')
+            ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => 'fake-cert', 'domain' => null, 'dns_warning' => null]);
         $this->app->instance(PasarguardNodeInstaller::class, $installer);
 
         /** @var FakeNutgram $bot */
@@ -353,9 +353,78 @@ class ReplaceServerTest extends TestCase
         $this->assertStringContainsString('خودکار حذف', $body['text']);
         $this->assertStringNotContainsString("delete_old_server:{$panel->id}:111", json_encode($body['reply_markup']));
 
+        // Profile had no core_id yet, so there's no prior node to replace —
+        // just the server itself gets scheduled for deletion.
         Queue::assertPushed(DeleteOldServerJob::class, function ($job) use ($panel) {
             return $this->prop($job, 'panelId') === $panel->id
-                && $this->prop($job, 'serverId') === '111';
+                && $this->prop($job, 'serverId') === '111'
+                && $this->prop($job, 'oldNodeId') === null;
+        });
+    }
+
+    public function test_finish_job_creates_a_new_panel_node_and_schedules_old_node_deletion(): void
+    {
+        Queue::fake();
+
+        config([
+            'pasarguard.panel.url' => 'https://panel.test',
+            'pasarguard.panel.username' => 'bots',
+            'pasarguard.panel.password' => 'secret',
+            'pasarguard.api_key' => 'fixed-api-key',
+        ]);
+
+        [$panel, ] = $this->makePanelAndSecret(111);
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-private-key', 'core_id' => 268]);
+
+        $newSecret = ServerSecret::create([
+            'panel_id' => $panel->id,
+            'provider_server_id' => 222,
+            'root_password' => 'new-password',
+            'region' => 'nyc1',
+            'size' => 's-1vcpu-1gb',
+            'image' => 'ubuntu-24-04-x64',
+            'hostname' => 'srv-old',
+        ]);
+
+        $installer = \Mockery::mock(PasarguardNodeInstaller::class);
+        $installer->shouldReceive('install')
+            ->once()
+            ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key')
+            ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => 'fake-cert-pem', 'domain' => null, 'dns_warning' => null]);
+        $this->app->instance(PasarguardNodeInstaller::class, $installer);
+
+        Http::fake([
+            'panel.test/api/admin/token' => Http::response(['access_token' => 'tok', 'token_type' => 'bearer']),
+            'panel.test/api/node/268' => Http::response(['id' => 268, 'core_config_id' => 7]),
+            'panel.test/api/node' => Http::response(['id' => 999]),
+        ]);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        $job = new ReplaceServerFinishJob($panel->id, '111', '222', '9.9.9.9', $profile->id, $bot->chatId() ?? 1);
+        $job->handle($bot, $this->app->make(PasarguardNodeInstaller::class));
+
+        $this->assertSame(999, $profile->fresh()->core_id);
+
+        Http::assertSent(fn ($request) => str_contains((string) $request->url(), '/api/node')
+            && $request->method() === 'POST'
+            && ($request['address'] ?? null) === '9.9.9.9'
+            && ($request['core_config_id'] ?? null) === 7
+            && ($request['server_ca'] ?? null) === 'fake-cert-pem'
+            && ($request['api_key'] ?? null) === 'fixed-api-key');
+
+        $history = $bot->getRequestHistory();
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+
+        $this->assertStringContainsString('نود جدید', $body['text']);
+        $this->assertStringContainsString('سرور و نود قبلی', $body['text']);
+
+        Queue::assertPushed(DeleteOldServerJob::class, function ($job) use ($panel) {
+            return $this->prop($job, 'panelId') === $panel->id
+                && $this->prop($job, 'serverId') === '111'
+                && $this->prop($job, 'oldNodeId') === 268;
         });
     }
 
@@ -379,7 +448,7 @@ class ReplaceServerTest extends TestCase
         $installer = \Mockery::mock(PasarguardNodeInstaller::class);
         $installer->shouldReceive('install')
             ->once()
-            ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key', 'Profile 1')
+            ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key')
             ->andReturn(['success' => false, 'message' => 'نصب نود ناموفق بود.', 'log' => 'boom', 'cert' => '', 'domain' => null, 'dns_warning' => null]);
         $this->app->instance(PasarguardNodeInstaller::class, $installer);
 
@@ -421,6 +490,39 @@ class ReplaceServerTest extends TestCase
         $body = json_decode((string) $request->getBody(), true);
 
         $this->assertStringContainsString('خودکار حذف شد', $body['text']);
+    }
+
+    public function test_delete_old_server_job_also_deletes_the_old_panel_node_when_given_an_id(): void
+    {
+        config([
+            'pasarguard.panel.url' => 'https://panel.test',
+            'pasarguard.panel.username' => 'bots',
+            'pasarguard.panel.password' => 'secret',
+        ]);
+
+        [$panel, ] = $this->makePanelAndSecret(111);
+
+        Http::fake([
+            'api.digitalocean.com/v2/droplets/111' => Http::response([], 204),
+            'panel.test/api/admin/token' => Http::response(['access_token' => 'tok', 'token_type' => 'bearer']),
+            'panel.test/api/node/268' => Http::response([], 204),
+        ]);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        $job = new DeleteOldServerJob($panel->id, '111', $bot->chatId() ?? 1, 268);
+        $job->handle($bot);
+
+        Http::assertSent(fn ($request) => $request->method() === 'DELETE'
+            && str_contains((string) $request->url(), '/api/node/268'));
+
+        $history = $bot->getRequestHistory();
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+
+        $this->assertStringContainsString('خودکار حذف شد', $body['text']);
+        $this->assertStringContainsString('نود قبلی', $body['text']);
     }
 
     public function test_delete_old_server_job_reports_provider_failure(): void
