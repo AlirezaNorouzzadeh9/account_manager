@@ -82,7 +82,7 @@ class WireguardProfileMenu extends InlineMenu
     {
         $this->closeMenu();
         $this->end();
-        SetWireguardProfileCoreIdConversation::begin($bot, $this->currentProfileId);
+        SetWireguardProfileCoreIdConversation::begin($bot, $bot->userId(), $bot->chatId(), [$this->currentProfileId]);
     }
 
     public function revealPrivateKey(Nutgram $bot): void

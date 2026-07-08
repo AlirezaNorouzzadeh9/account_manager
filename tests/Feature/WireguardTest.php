@@ -164,9 +164,63 @@ class WireguardTest extends TestCase
         $bot->hearCallbackQueryData('x')->reply(); // "وایرگاردها"
         $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها"
         $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
-        $bot->hearCallbackQueryData('x@')->reply(); // "🗑 حذف پروفایل" (2nd x-prefixed button)
+        $bot->hearCallbackQueryData('x@@')->reply(); // "🗑 حذف پروفایل" (3rd x-prefixed button, after core_id)
         $bot->hearCallbackQueryData('yes')->reply();
 
         $this->assertNull($profile->fresh());
+    }
+
+    public function test_set_core_id_updates_the_profile(): void
+    {
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-key']);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply(); // "وایرگاردها"
+        $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها"
+        $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
+        $bot->hearCallbackQueryData('x@')->reply(); // "🧩 تنظیم core_id" (2nd x-prefixed button)
+        $bot->hearText('268')->reply();
+
+        $this->assertSame(268, $profile->fresh()->core_id);
+    }
+
+    public function test_set_core_id_rejects_non_numeric_input(): void
+    {
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-key']);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply(); // "وایرگاردها"
+        $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها"
+        $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
+        $bot->hearCallbackQueryData('x@')->reply(); // "🧩 تنظیم core_id"
+        $bot->hearText('not-a-number')->reply();
+
+        $this->assertNull($profile->fresh()->core_id);
+    }
+
+    public function test_sending_zero_clears_the_profiles_core_id(): void
+    {
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-key', 'core_id' => 268]);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply(); // "وایرگاردها"
+        $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها"
+        $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
+        $bot->hearCallbackQueryData('x@')->reply(); // "🧩 تنظیم core_id"
+        $bot->hearText('0')->reply();
+
+        $this->assertNull($profile->fresh()->core_id);
     }
 }
