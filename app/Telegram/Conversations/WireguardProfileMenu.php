@@ -81,9 +81,12 @@ class WireguardProfileMenu extends InlineMenu
 
         $this->currentProfileId = $profile->id;
 
+        // "core_id" contains an underscore, which Telegram's Markdown parser
+        // reads as an unclosed italic delimiter unless it's inside a code
+        // span — always keep it backtick-wrapped on any Markdown message.
         $coreIdLine = $profile->core_id
-            ? "\ncore_id (پنل PasarGuard): `{$profile->core_id}`"
-            : "\ncore_id تنظیم نشده — بدون آن، بعد از تغییر IP باید نود را دستی از پنل ریست کنید.";
+            ? "\n`core_id` (پنل PasarGuard): `{$profile->core_id}`"
+            : "\n`core_id` تنظیم نشده — بدون آن، بعد از تغییر IP باید نود را دستی از پنل ریست کنید.";
 
         $this->clearButtons();
         $this->menuText(

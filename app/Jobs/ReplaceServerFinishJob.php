@@ -73,7 +73,10 @@ class ReplaceServerFinishJob implements ShouldQueue
             $succeeded = $result['success'];
             $cert = $result['cert'] ?? null;
         } catch (Throwable $e) {
-            $statusMessage = "⚠️ سرور جایگزین ساخته شد ولی نصب نود ناموفق بود:\n{$e->getMessage()}\n".
+            // Backtick-wrapped: this final message is sent with parse_mode
+            // Markdown, and a raw exception message can contain an
+            // unescaped "_"/"*" that breaks the whole send otherwise.
+            $statusMessage = "⚠️ سرور جایگزین ساخته شد ولی نصب نود ناموفق بود:\n`{$e->getMessage()}`\n".
                 'می‌توانید بعداً دستی از «اطلاعات سرور» نود کنید.';
         }
 
@@ -93,7 +96,7 @@ class ReplaceServerFinishJob implements ShouldQueue
 
             if ($dns) {
                 $dnsLine = $dns['error']
-                    ? "⚠️ ثبت رکورد DNS برای {$dns['domain']} ناموفق بود: {$dns['error']}\n\n"
+                    ? "⚠️ ثبت رکورد DNS برای `{$dns['domain']}` ناموفق بود: `{$dns['error']}`\n\n"
                     : "🌐 دامنه `{$dns['domain']}` هم به IP جدید آپدیت شد.\n\n";
             }
         }
@@ -180,7 +183,7 @@ class ReplaceServerFinishJob implements ShouldQueue
             ];
         } catch (Throwable $e) {
             return [
-                'line' => "⚠️ ساخت خودکار نود جدید در پنل ناموفق بود ({$e->getMessage()})؛ دستی با IP {$ip} در پنل ثبت کنید.\n\n",
+                'line' => "⚠️ ساخت خودکار نود جدید در پنل ناموفق بود (`{$e->getMessage()}`)؛ دستی با IP {$ip} در پنل ثبت کنید.\n\n",
                 'oldNodeId' => null,
             ];
         }

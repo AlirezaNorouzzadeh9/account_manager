@@ -26,7 +26,11 @@ class PasarguardNodeReconnector
 
                 return '✅ نود به‌صورت خودکار در پنل PasarGuard ریست شد.';
             } catch (Throwable $e) {
-                return "⚠️ ریست خودکار نود در پنل PasarGuard ناموفق بود ({$e->getMessage()})؛ یک‌بار دستی از پنل ریست کنید.";
+                // Backtick-wrapped: this message is sent with parse_mode
+                // Markdown, and a raw exception message can easily contain
+                // an unescaped "_"/"*" that Telegram reads as a formatting
+                // entity, breaking the whole send.
+                return "⚠️ ریست خودکار نود در پنل PasarGuard ناموفق بود (`{$e->getMessage()}`)؛ یک‌بار دستی از پنل ریست کنید.";
             }
         }
 
