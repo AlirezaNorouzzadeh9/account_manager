@@ -88,13 +88,22 @@ class WireguardProfileMenu extends InlineMenu
             ? "\n`core_id` (پنل PasarGuard): `{$profile->core_id}`"
             : "\n`core_id` تنظیم نشده — بدون آن، بعد از تغییر IP باید نود را دستی از پنل ریست کنید.";
 
+        $intro = "👁 نمایش پرایوت کی — نمایش PrivateKey این پروفایل\n".
+            "🧩 تنظیم آیدی هسته — تنظیم `core_id` این پروفایل در پنل PasarGuard (برای ریست خودکار نود بعد از تغییر IP)\n".
+            "🗑 حذف پروفایل — حذف این پروفایل\n".
+            "🔙 بازگشت — بازگشت به لیست پروفایل‌ها\n\n";
+
         $this->clearButtons();
         $this->menuText(
-            $this->rtl(($justCreated ? "✅ پروفایل «{$profile->name}» ذخیره شد.\n\n" : '')."نام: `{$profile->name}`".$coreIdLine),
+            $this->rtl(
+                $intro.
+                ($justCreated ? "✅ پروفایل «{$profile->name}» ذخیره شد.\n\n" : '').
+                "نام: `{$profile->name}`".$coreIdLine
+            ),
             ['parse_mode' => 'Markdown']
         );
-        $this->addButtonRow(InlineKeyboardButton::make('👁 نمایش PrivateKey', callback_data: 'x@revealPrivateKey'));
-        $this->addButtonRow(InlineKeyboardButton::make('🧩 تنظیم core_id', callback_data: 'x@setCoreId'));
+        $this->addButtonRow(InlineKeyboardButton::make('👁 نمایش پرایوت کی', callback_data: 'x@revealPrivateKey'));
+        $this->addButtonRow(InlineKeyboardButton::make('🧩 تنظیم آیدی هسته', callback_data: 'x@setCoreId'));
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف پروفایل', callback_data: 'x@confirmDeleteProfile'));
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToList'));
         $this->showMenu();

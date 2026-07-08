@@ -183,7 +183,7 @@ class WireguardTest extends TestCase
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (direct from settings menu)
         $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
-        $bot->hearCallbackQueryData('x@')->reply(); // "🧩 تنظیم core_id" (2nd x-prefixed button)
+        $bot->hearCallbackQueryData('x@')->reply(); // "🧩 تنظیم آیدی هسته" (2nd x-prefixed button)
         $bot->hearText('268')->reply();
 
         $this->assertSame(268, $profile->fresh()->core_id);
@@ -200,7 +200,7 @@ class WireguardTest extends TestCase
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (direct from settings menu)
         $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
-        $bot->hearCallbackQueryData('x@')->reply(); // "🧩 تنظیم core_id"
+        $bot->hearCallbackQueryData('x@')->reply(); // "🧩 تنظیم آیدی هسته"
         $bot->hearText('not-a-number')->reply();
 
         $this->assertNull($profile->fresh()->core_id);
@@ -217,7 +217,7 @@ class WireguardTest extends TestCase
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (direct from settings menu)
         $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
-        $bot->hearCallbackQueryData('x@')->reply(); // "🧩 تنظیم core_id"
+        $bot->hearCallbackQueryData('x@')->reply(); // "🧩 تنظیم آیدی هسته"
         $bot->hearText('0')->reply();
 
         $this->assertNull($profile->fresh()->core_id);
