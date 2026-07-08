@@ -77,6 +77,7 @@ class AddPanelConversation extends InlineMenu
 
         $tokenUrl = match (Provider::from($this->provider)) {
             Provider::Linode => 'https://cloud.linode.com/profile/tokens',
+            Provider::Vultr => 'https://my.vultr.com/settings/#settingsapi',
             default => 'https://cloud.digitalocean.com/account/api/tokens',
         };
 

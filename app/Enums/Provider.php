@@ -23,7 +23,7 @@ enum Provider: string
     public function isAvailable(): bool
     {
         return match ($this) {
-            self::DigitalOcean, self::Linode => true,
+            self::DigitalOcean, self::Linode, self::Vultr => true,
             default => false,
         };
     }

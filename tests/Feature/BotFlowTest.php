@@ -86,6 +86,39 @@ class BotFlowTest extends TestCase
         $this->assertSame('owner@example.com', $panel->meta['email']);
     }
 
+    public function test_add_panel_conversation_creates_a_vultr_panel_with_the_vultr_token_url(): void
+    {
+        Http::fake([
+            'api.vultr.com/v2/account' => Http::response([
+                'account' => ['email' => 'owner@example.com'],
+            ]),
+        ]);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('panels:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply();
+        $bot->hearCallbackQueryData('vultr')->reply();
+        $bot->hearText('My Vultr Panel')->reply();
+
+        $history = $bot->getRequestHistory();
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+        $this->assertStringContainsString('my.vultr.com/settings', $body['text']);
+
+        $bot->hearText('vultr_fake_token_for_testing')->reply();
+
+        $this->assertDatabaseHas('panels', [
+            'name' => 'My Vultr Panel',
+            'provider' => 'vultr',
+        ]);
+
+        $panel = Panel::where('name', 'My Vultr Panel')->first();
+        $this->assertSame('owner@example.com', $panel->meta['email']);
+    }
+
     public function test_rename_panel_updates_name(): void
     {
         $panel = Panel::create([

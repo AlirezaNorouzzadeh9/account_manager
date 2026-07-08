@@ -6,6 +6,7 @@ use App\Enums\Provider;
 use App\Services\Providers\DigitalOcean\DigitalOceanClient;
 use App\Services\Providers\Linode\LinodeClient;
 use App\Services\Providers\ProviderManager;
+use App\Services\Providers\Vultr\VultrClient;
 use Tests\TestCase;
 
 class ProviderManagerTest extends TestCase
@@ -15,9 +16,9 @@ class ProviderManagerTest extends TestCase
         $this->assertTrue(Provider::Linode->isAvailable());
     }
 
-    public function test_vultr_is_still_marked_unavailable(): void
+    public function test_vultr_is_marked_available(): void
     {
-        $this->assertFalse(Provider::Vultr->isAvailable());
+        $this->assertTrue(Provider::Vultr->isAvailable());
     }
 
     public function test_provider_manager_resolves_a_linode_client(): void
@@ -25,6 +26,13 @@ class ProviderManagerTest extends TestCase
         $client = ProviderManager::make(Provider::Linode, 'fake-token');
 
         $this->assertInstanceOf(LinodeClient::class, $client);
+    }
+
+    public function test_provider_manager_resolves_a_vultr_client(): void
+    {
+        $client = ProviderManager::make(Provider::Vultr, 'fake-token');
+
+        $this->assertInstanceOf(VultrClient::class, $client);
     }
 
     public function test_provider_manager_resolves_a_digitalocean_client(): void
