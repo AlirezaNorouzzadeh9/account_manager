@@ -14,9 +14,11 @@ class WireguardProfile extends Model
     protected $fillable = [
         'name',
         'private_key',
+        'core_id',
     ];
 
     protected $casts = [
         'private_key' => 'encrypted',
+        'core_id' => 'integer',
     ];
 }

@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Panel;
 use App\Models\ServerSecret;
 use App\Services\Pasarguard\PasarguardNodeInstaller;
+use App\Services\Pasarguard\PasarguardNodeReconnector;
 use App\Services\Providers\ProviderManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -113,7 +114,7 @@ class InstallPasarguardNodeJob implements ShouldQueue
         if (! empty($result['domain'])) {
             $bot->sendMessage(
                 "🌐 برای ثبت در پنل PasarGuard، به‌جای آی‌پی از این آدرس استفاده کنید:\n`{$result['domain']}`\n\n".
-                'اگر این نود قبلاً با همین آدرس در پنل ثبت شده، چون آی‌پی پشت دامنه عوض شده، یک‌بار آن را از پنل PasarGuard ریست/ری‌استارت کنید تا تغییر اعمال شود.',
+                app(PasarguardNodeReconnector::class)->reminder($result['domain'], $secret->wireguardProfile),
                 chat_id: $this->chatId,
                 parse_mode: 'Markdown',
             );

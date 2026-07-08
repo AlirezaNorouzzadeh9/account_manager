@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\ServerSecret;
 use App\Services\Pasarguard\PasarguardNodeInstaller;
+use App\Services\Pasarguard\PasarguardNodeReconnector;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -92,7 +93,7 @@ class ReplaceServerFinishJob implements ShouldQueue
 
         $domainLine = $domain
             ? "🪪 آدرس نود (برای پنل PasarGuard): `{$domain}`\n".
-                'چون آی‌پی پشت این دامنه عوض شده، یک‌بار این نود را از پنل PasarGuard ریست/ری‌استارت کنید تا آی‌پی جدید اعمال شود.'."\n\n"
+                app(PasarguardNodeReconnector::class)->reminder($domain, $profile)."\n\n"
             : '';
         $dnsWarningLine = $dnsWarning ? "⚠️ {$dnsWarning}\n\n" : '';
 
