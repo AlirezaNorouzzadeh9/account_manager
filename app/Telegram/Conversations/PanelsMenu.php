@@ -71,12 +71,15 @@ class PanelsMenu extends InlineMenu
         }
 
         $this->clearButtons();
-        $this->menuText($this->rtl(
-            ($justCreated ? "✅ پنل «{$panel->name}» با موفقیت اضافه شد.\n\n" : '').
-            "نام: {$panel->name}\n".
-            "ارائه‌دهنده: {$panel->provider->label()}\n".
-            'ایمیل: '.($panel->meta['email'] ?? '-')
-        ));
+        $this->menuText(
+            $this->rtl(
+                ($justCreated ? "✅ پنل «{$panel->name}» با موفقیت اضافه شد.\n\n" : '').
+                "نام: `{$panel->name}`\n".
+                "ارائه‌دهنده: `{$panel->provider->label()}`\n".
+                'ایمیل: `'.($panel->meta['email'] ?? '-').'`'
+            ),
+            ['parse_mode' => 'Markdown']
+        );
         $this->addButtonRow(InlineKeyboardButton::make('✏️ ویرایش نام', callback_data: "{$panel->id}@renamePanel"));
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف پنل', callback_data: "{$panel->id}@confirmDelete"));
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToList'));

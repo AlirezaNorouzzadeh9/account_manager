@@ -82,11 +82,14 @@ class WireguardProfileMenu extends InlineMenu
         $this->currentProfileId = $profile->id;
 
         $coreIdLine = $profile->core_id
-            ? "\ncore_id (پنل PasarGuard): {$profile->core_id}"
+            ? "\ncore_id (پنل PasarGuard): `{$profile->core_id}`"
             : "\ncore_id تنظیم نشده — بدون آن، بعد از تغییر IP باید نود را دستی از پنل ریست کنید.";
 
         $this->clearButtons();
-        $this->menuText($this->rtl(($justCreated ? "✅ پروفایل «{$profile->name}» ذخیره شد.\n\n" : '')."نام: {$profile->name}".$coreIdLine));
+        $this->menuText(
+            $this->rtl(($justCreated ? "✅ پروفایل «{$profile->name}» ذخیره شد.\n\n" : '')."نام: `{$profile->name}`".$coreIdLine),
+            ['parse_mode' => 'Markdown']
+        );
         $this->addButtonRow(InlineKeyboardButton::make('👁 نمایش PrivateKey', callback_data: 'x@revealPrivateKey'));
         $this->addButtonRow(InlineKeyboardButton::make('🧩 تنظیم core_id', callback_data: 'x@setCoreId'));
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف پروفایل', callback_data: 'x@confirmDeleteProfile'));

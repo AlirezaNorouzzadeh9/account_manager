@@ -83,12 +83,15 @@ class WireguardMenu extends InlineMenu
         $this->currentLocationId = $location->id;
 
         $this->clearButtons();
-        $this->menuText($this->rtl(
-            ($justCreated ? "✅ لوکیشن «{$location->name}» ذخیره شد.\n\n" : '').
-            "نام: {$location->name}\n".
-            "آی‌پی: {$location->ip}\n".
-            "PublicKey سرور: {$location->server_public_key}"
-        ));
+        $this->menuText(
+            $this->rtl(
+                ($justCreated ? "✅ لوکیشن «{$location->name}» ذخیره شد.\n\n" : '').
+                "نام: `{$location->name}`\n".
+                "آی‌پی: `{$location->ip}`\n".
+                "PublicKey سرور: `{$location->server_public_key}`"
+            ),
+            ['parse_mode' => 'Markdown']
+        );
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف لوکیشن', callback_data: 'x@confirmDeleteLocation'));
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToList'));
         $this->showMenu();

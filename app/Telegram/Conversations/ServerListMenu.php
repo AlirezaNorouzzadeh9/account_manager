@@ -199,14 +199,14 @@ class ServerListMenu extends InlineMenu
         $this->clearButtons();
         $this->menuText(
             $this->rtl(
-                "🏷 نام: {$server['name']}\n".
-                "⚙️ وضعیت: {$server['status']}\n".
+                "🏷 نام: `{$server['name']}`\n".
+                "⚙️ وضعیت: `{$server['status']}`\n".
                 "🌐 آی‌پی: `{$ip}`\n".
                 "➕ آی‌پی رزرو: `{$reservedIp}`\n".
                 "🔑 پسورد روت: `{$password}`\n".
-                "{$flag} دیتاسنتر: {$regionName}\n".
-                "پلن: {$sizeLabel} | 💿 دیسک: {$diskGb}GB\n".
-                "💿 سیستم‌عامل: {$server['image']['distribution']} {$server['image']['name']}"
+                "{$flag} دیتاسنتر: `{$regionName}`\n".
+                "پلن: `{$sizeLabel}` | 💿 دیسک: `{$diskGb}GB`\n".
+                "💿 سیستم‌عامل: `{$server['image']['distribution']} {$server['image']['name']}`"
             ),
             ['parse_mode' => 'Markdown']
         );
