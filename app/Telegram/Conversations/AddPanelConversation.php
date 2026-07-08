@@ -37,8 +37,7 @@ class AddPanelConversation extends InlineMenu
 
     public function backToPanels(Nutgram $bot): void
     {
-        // No closeMenu(): PanelsMenu edits this same message in place.
-        $this->end();
+        $this->endWithoutClosing();
         PanelsMenu::begin($bot);
     }
 

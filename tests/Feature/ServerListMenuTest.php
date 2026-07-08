@@ -64,4 +64,49 @@ class ServerListMenuTest extends TestCase
 
         Queue::assertPushed(PollProviderActionJob::class);
     }
+
+    public function test_server_list_shows_datacenter_for_each_server(): void
+    {
+        $panel = Panel::create([
+            'name' => 'My DO Panel',
+            'provider' => 'digitalocean',
+            'api_token' => 'fake-token',
+            'meta' => ['email' => 'owner@example.com'],
+            'is_active' => true,
+        ]);
+
+        $droplet = [
+            'id' => 42,
+            'name' => 'my-server-1',
+            'status' => 'active',
+            'region' => ['slug' => 'nyc1', 'name' => 'New York 1'],
+            'size_slug' => 's-1vcpu-1gb',
+            'image' => ['distribution' => 'Ubuntu', 'name' => '24.04 x64'],
+            'networks' => ['v4' => [['ip_address' => '1.2.3.4', 'type' => 'public']]],
+        ];
+
+        Http::fake([
+            'api.digitalocean.com/v2/droplets?*' => Http::response([
+                'droplets' => [$droplet],
+                'links' => [],
+                'meta' => ['total' => 1],
+            ]),
+        ]);
+
+        config(['bot.admins' => ['555']]);
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+        $bot->setCommonUser(User::make(id: 555, is_bot: false, first_name: 'Tester'));
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('server:list')->reply();
+        $bot->hearCallbackQueryData("{$panel->id}")->reply();
+
+        $history = $bot->getRequestHistory();
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+
+        $this->assertStringContainsString('New York 1', json_encode($body['reply_markup'] ?? [], JSON_UNESCAPED_UNICODE));
+    }
 }

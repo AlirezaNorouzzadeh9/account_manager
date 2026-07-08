@@ -55,6 +55,28 @@ class BotFlowTest extends TestCase
         $this->assertSame('dop_v1_fake_token_for_testing', $panel->api_token);
     }
 
+    public function test_rename_panel_updates_name(): void
+    {
+        $panel = Panel::create([
+            'name' => 'Old Name',
+            'provider' => 'digitalocean',
+            'api_token' => 'fake-token',
+            'meta' => ['email' => 'owner@example.com'],
+            'is_active' => true,
+        ]);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('panels:menu')->reply();
+        $bot->hearCallbackQueryData((string) $panel->id)->reply(); // showPanel
+        $bot->hearCallbackQueryData((string) $panel->id)->reply(); // "✏️ ویرایش نام" (first id-based button on this screen)
+        $bot->hearText('New Name')->reply();
+
+        $this->assertSame('New Name', $panel->fresh()->name);
+    }
+
     public function test_create_server_conversation_dispatches_ready_job(): void
     {
         Queue::fake();

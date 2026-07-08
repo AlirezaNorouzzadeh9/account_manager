@@ -25,8 +25,9 @@ class SettingsMenu extends InlineMenu
 
     public function wireguard(Nutgram $bot): void
     {
-        // No closeMenu(): WireguardMenu edits this same message in place.
-        $this->end();
+        // endWithoutClosing(): WireguardMenu edits this same message in
+        // place; a bare end() would delete it first (see EditsInPlace).
+        $this->endWithoutClosing();
         WireguardMenu::begin($bot);
     }
 }

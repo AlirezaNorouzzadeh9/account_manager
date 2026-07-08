@@ -26,4 +26,18 @@ trait EditsInPlace
         $this->messageId = $message->message_id;
         $this->chatId = $message->chat->id;
     }
+
+    /**
+     * Conversation::end() always calls closing(), which InlineMenu overrides
+     * to call closeMenu() — deleting this message. Use this instead of a bare
+     * $this->end() when handing off to another menu that will edit this same
+     * message: nulling messageId/chatId first makes that closeMenu() a no-op,
+     * leaving the message alive for the next menu to take over.
+     */
+    protected function endWithoutClosing(): void
+    {
+        $this->messageId = null;
+        $this->chatId = null;
+        $this->end();
+    }
 }

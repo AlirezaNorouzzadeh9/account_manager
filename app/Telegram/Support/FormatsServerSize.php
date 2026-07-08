@@ -25,6 +25,6 @@ trait FormatsServerSize
         $ram = $s['memory'] % 1024 === 0 ? ($s['memory'] / 1024).'GB' : $s['memory'].'MB';
         $price = rtrim(rtrim(number_format((float) $s['price_monthly'], 2, '.', ''), '0'), '.');
 
-        return "🧠 {$s['vcpus']} CPU{$vendor} | 💾 {$ram} RAM | 💰 {$price}$";
+        return "{$s['vcpus']} CPU{$vendor} | {$ram} RAM | {$price}$";
     }
 }

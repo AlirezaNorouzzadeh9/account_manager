@@ -14,6 +14,7 @@ use App\Services\Providers\ProviderException;
 use App\Services\Providers\ProviderManager;
 use App\Telegram\Support\Cancellable;
 use App\Telegram\Support\EditsInPlace;
+use App\Telegram\Support\FormatsRtlText;
 use App\Telegram\Support\FormatsServerSize;
 use App\Telegram\Support\GridButtons;
 use SergiX44\Nutgram\Conversations\InlineMenu;
@@ -24,6 +25,7 @@ class ServerListMenu extends InlineMenu
 {
     use Cancellable;
     use EditsInPlace;
+    use FormatsRtlText;
     use FormatsServerSize;
     use GridButtons;
 
@@ -126,8 +128,11 @@ class ServerListMenu extends InlineMenu
                     'off' => '🔴',
                     default => '⚪',
                 };
+                $flag = DigitalOceanClient::regionFlag($server['region']['slug'] ?? '');
+                $regionName = $server['region']['name'] ?? $server['region']['slug'] ?? '-';
+
                 $this->addButtonRow(InlineKeyboardButton::make(
-                    "{$statusIcon} {$server['name']} | {$server['status']} | {$ip}",
+                    "{$statusIcon} {$server['name']} | {$flag} {$regionName} | {$ip}",
                     callback_data: "{$server['id']}@showServer"
                 ));
             }
@@ -193,14 +198,16 @@ class ServerListMenu extends InlineMenu
 
         $this->clearButtons();
         $this->menuText(
-            "🏷 نام: {$server['name']}\n".
-            "⚙️ وضعیت: {$server['status']}\n".
-            "🌐 آی‌پی: `{$ip}`\n".
-            "➕ آی‌پی رزرو: `{$reservedIp}`\n".
-            "🔑 پسورد روت: `{$password}`\n".
-            "{$flag} دیتاسنتر: {$regionName}\n".
-            "پلن: {$sizeLabel} | 💿 دیسک: {$diskGb}GB\n".
-            "💿 سیستم‌عامل: {$server['image']['distribution']} {$server['image']['name']}",
+            $this->rtl(
+                "🏷 نام: {$server['name']}\n".
+                "⚙️ وضعیت: {$server['status']}\n".
+                "🌐 آی‌پی: `{$ip}`\n".
+                "➕ آی‌پی رزرو: `{$reservedIp}`\n".
+                "🔑 پسورد روت: `{$password}`\n".
+                "{$flag} دیتاسنتر: {$regionName}\n".
+                "پلن: {$sizeLabel} | 💿 دیسک: {$diskGb}GB\n".
+                "💿 سیستم‌عامل: {$server['image']['distribution']} {$server['image']['name']}"
+            ),
             ['parse_mode' => 'Markdown']
         );
 
@@ -224,15 +231,14 @@ class ServerListMenu extends InlineMenu
             InlineKeyboardButton::make('🔄 آپدیت وایرگارد', callback_data: 'x@updateWireguards'),
         ]);
 
-        // Builds a fresh server with the same specs (+ same node/WireGuard
-        // profile if any) and auto-deletes this one once it's confirmed
-        // working — kept on its own row since it's a bigger action than the
-        // rest, but separate from the danger zone since it isn't destructive
-        // to THIS server until the replacement is verified.
-        $this->addButtonRow(InlineKeyboardButton::make('🔄 تغییر سرور', callback_data: 'x@replaceServer'));
-
-        // Danger zone, kept isolated so it can't be tapped by accident
-        $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف سرور', callback_data: 'x@confirmDeleteServer'));
+        // "تغییر سرور" builds a fresh server with the same specs (+ same
+        // node/WireGuard profile if any) and auto-deletes this one once it's
+        // confirmed working — not destructive to THIS server until the
+        // replacement is verified, so it's fine sharing a row with delete.
+        $this->addButtonRow(
+            InlineKeyboardButton::make('🗑 حذف سرور', callback_data: 'x@confirmDeleteServer'),
+            InlineKeyboardButton::make('🔄 تغییر سرور', callback_data: 'x@replaceServer'),
+        );
 
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت به لیست', callback_data: 'x@backToList'));
         $this->showMenu();
@@ -577,10 +583,7 @@ class ServerListMenu extends InlineMenu
 
     public function replaceServer(Nutgram $bot): void
     {
-        // No closeMenu() here: ReplaceServerConversation edits this same
-        // message in place (EditsInPlace) — closing it first would delete
-        // the message before there's anything left to edit.
-        $this->end();
+        $this->endWithoutClosing();
         ReplaceServerConversation::begin($bot, $bot->userId(), $bot->chatId(), [$this->panelId, $this->serverId]);
     }
 

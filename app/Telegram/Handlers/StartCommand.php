@@ -26,12 +26,14 @@ class StartCommand
         // listed second/last here to land on the right.
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('➕ ساخت سرور', callback_data: 'server:create'),
                 InlineKeyboardButton::make('🖥 پنل‌های من', callback_data: 'panels:menu'),
             )
             ->addRow(
-                InlineKeyboardButton::make('⚙️ تنظیمات', callback_data: 'settings:menu'),
                 InlineKeyboardButton::make('📋 سرورهای من', callback_data: 'server:list'),
+                InlineKeyboardButton::make('➕ ساخت سرور', callback_data: 'server:create'),
+            )
+            ->addRow(
+                InlineKeyboardButton::make('⚙️ تنظیمات', callback_data: 'settings:menu'),
             );
     }
 }

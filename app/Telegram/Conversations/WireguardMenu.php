@@ -4,6 +4,7 @@ namespace App\Telegram\Conversations;
 
 use App\Models\WireguardLocation;
 use App\Telegram\Support\EditsInPlace;
+use App\Telegram\Support\FormatsRtlText;
 use App\Telegram\Support\GridButtons;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
@@ -18,6 +19,7 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 class WireguardMenu extends InlineMenu
 {
     use EditsInPlace;
+    use FormatsRtlText;
     use GridButtons;
 
     protected ?int $currentLocationId = null;
@@ -54,8 +56,7 @@ class WireguardMenu extends InlineMenu
 
     public function backToSettings(Nutgram $bot): void
     {
-        // No closeMenu(): SettingsMenu edits this same message in place.
-        $this->end();
+        $this->endWithoutClosing();
         SettingsMenu::begin($bot);
     }
 
@@ -68,8 +69,7 @@ class WireguardMenu extends InlineMenu
 
     public function profiles(Nutgram $bot): void
     {
-        // No closeMenu(): WireguardProfileMenu edits this same message in place.
-        $this->end();
+        $this->endWithoutClosing();
         WireguardProfileMenu::begin($bot);
     }
 
@@ -85,12 +85,12 @@ class WireguardMenu extends InlineMenu
         $this->currentLocationId = $location->id;
 
         $this->clearButtons();
-        $this->menuText(
+        $this->menuText($this->rtl(
             ($justCreated ? "✅ لوکیشن «{$location->name}» ذخیره شد.\n\n" : '').
             "نام: {$location->name}\n".
             "آی‌پی: {$location->ip}\n".
             "PublicKey سرور: {$location->server_public_key}"
-        );
+        ));
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف لوکیشن', callback_data: 'x@confirmDeleteLocation'));
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToList'));
         $this->showMenu();

@@ -4,6 +4,7 @@ namespace App\Telegram\Conversations;
 
 use App\Models\WireguardProfile;
 use App\Telegram\Support\EditsInPlace;
+use App\Telegram\Support\FormatsRtlText;
 use App\Telegram\Support\GridButtons;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
@@ -17,6 +18,7 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 class WireguardProfileMenu extends InlineMenu
 {
     use EditsInPlace;
+    use FormatsRtlText;
     use GridButtons;
 
     protected ?int $currentProfileId = null;
@@ -52,8 +54,7 @@ class WireguardProfileMenu extends InlineMenu
 
     public function backToWireguard(Nutgram $bot): void
     {
-        // No closeMenu(): WireguardMenu edits this same message in place.
-        $this->end();
+        $this->endWithoutClosing();
         WireguardMenu::begin($bot);
     }
 
@@ -80,7 +81,7 @@ class WireguardProfileMenu extends InlineMenu
             : "\ncore_id تنظیم نشده — بدون آن، بعد از تغییر IP باید نود را دستی از پنل ریست کنید.";
 
         $this->clearButtons();
-        $this->menuText(($justCreated ? "✅ پروفایل «{$profile->name}» ذخیره شد.\n\n" : '')."نام: {$profile->name}".$coreIdLine);
+        $this->menuText($this->rtl(($justCreated ? "✅ پروفایل «{$profile->name}» ذخیره شد.\n\n" : '')."نام: {$profile->name}".$coreIdLine));
         $this->addButtonRow(InlineKeyboardButton::make('👁 نمایش PrivateKey', callback_data: 'x@revealPrivateKey'));
         $this->addButtonRow(InlineKeyboardButton::make('🧩 تنظیم core_id', callback_data: 'x@setCoreId'));
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف پروفایل', callback_data: 'x@confirmDeleteProfile'));

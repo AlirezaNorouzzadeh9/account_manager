@@ -5,6 +5,7 @@ namespace App\Telegram\Conversations;
 use App\Models\Panel;
 use App\Telegram\Support\Cancellable;
 use App\Telegram\Support\EditsInPlace;
+use App\Telegram\Support\FormatsRtlText;
 use App\Telegram\Support\GridButtons;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
@@ -14,6 +15,7 @@ class PanelsMenu extends InlineMenu
 {
     use Cancellable;
     use EditsInPlace;
+    use FormatsRtlText;
     use GridButtons;
 
     public function start(Nutgram $bot, ?int $focusPanelId = null, bool $justCreated = false): void
@@ -51,8 +53,7 @@ class PanelsMenu extends InlineMenu
 
     public function addPanel(Nutgram $bot): void
     {
-        // No closeMenu(): AddPanelConversation edits this same message in place.
-        $this->end();
+        $this->endWithoutClosing();
         AddPanelConversation::begin($bot);
     }
 
@@ -67,15 +68,22 @@ class PanelsMenu extends InlineMenu
         }
 
         $this->clearButtons();
-        $this->menuText(
+        $this->menuText($this->rtl(
             ($justCreated ? "✅ پنل «{$panel->name}» با موفقیت اضافه شد.\n\n" : '').
             "نام: {$panel->name}\n".
             "ارائه‌دهنده: {$panel->provider->label()}\n".
             'ایمیل: '.($panel->meta['email'] ?? '-')
-        );
+        ));
+        $this->addButtonRow(InlineKeyboardButton::make('✏️ ویرایش نام', callback_data: "{$panel->id}@renamePanel"));
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف پنل', callback_data: "{$panel->id}@confirmDelete"));
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToList'));
         $this->showMenu();
+    }
+
+    public function renamePanel(Nutgram $bot, string $data): void
+    {
+        $this->endWithoutClosing();
+        RenamePanelConversation::begin($bot, $bot->userId(), $bot->chatId(), [(int) $data]);
     }
 
     public function confirmDelete(Nutgram $bot, string $data): void
