@@ -84,9 +84,18 @@ class ReplaceServerFinishJob implements ShouldQueue
 
         $nodeLine = '';
         $oldNodeId = null;
+        $dnsLine = '';
 
         if ($succeeded && $profile && $cert) {
             ['line' => $nodeLine, 'oldNodeId' => $oldNodeId] = $this->registerNewNode($profile, $this->newIp, $cert);
+
+            $dns = $installer->syncProfileDns($profile->name, $this->newIp);
+
+            if ($dns) {
+                $dnsLine = $dns['error']
+                    ? "⚠️ ثبت رکورد DNS برای {$dns['domain']} ناموفق بود: {$dns['error']}\n\n"
+                    : "🌐 دامنه `{$dns['domain']}` هم به IP جدید آپدیت شد.\n\n";
+            }
         }
 
         if ($succeeded) {
@@ -110,6 +119,7 @@ class ReplaceServerFinishJob implements ShouldQueue
             "{$statusMessage}\n\n".
             "🌐 آی‌پی جدید: `{$this->newIp}`\n\n".
             $nodeLine.
+            $dnsLine.
             $oldServerLine,
             chat_id: $this->chatId,
             reply_markup: $keyboard,

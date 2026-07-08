@@ -335,6 +335,7 @@ class ReplaceServerTest extends TestCase
             ->once()
             ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key')
             ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => 'fake-cert', 'domain' => null, 'dns_warning' => null]);
+        $installer->shouldReceive('syncProfileDns')->once()->with('Profile 1', '9.9.9.9')->andReturn(null);
         $this->app->instance(PasarguardNodeInstaller::class, $installer);
 
         /** @var FakeNutgram $bot */
@@ -391,6 +392,10 @@ class ReplaceServerTest extends TestCase
             ->once()
             ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key')
             ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => 'fake-cert-pem', 'domain' => null, 'dns_warning' => null]);
+        $installer->shouldReceive('syncProfileDns')
+            ->once()
+            ->with('germany', '9.9.9.9')
+            ->andReturn(['domain' => 'germany.node.pcbot.top', 'error' => null]);
         $this->app->instance(PasarguardNodeInstaller::class, $installer);
 
         Http::fake([
@@ -420,6 +425,7 @@ class ReplaceServerTest extends TestCase
 
         $this->assertStringContainsString('نود جدید', $body['text']);
         $this->assertStringContainsString('سرور و نود قبلی', $body['text']);
+        $this->assertStringContainsString('germany.node.pcbot.top', $body['text']);
 
         Queue::assertPushed(DeleteOldServerJob::class, function ($job) use ($panel) {
             return $this->prop($job, 'panelId') === $panel->id

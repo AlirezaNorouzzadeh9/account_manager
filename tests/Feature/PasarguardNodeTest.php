@@ -9,6 +9,7 @@ use App\Models\ServerSecret;
 use App\Models\WireguardLocation;
 use App\Services\Pasarguard\PasarguardNodeInstaller;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\User\User;
@@ -284,5 +285,59 @@ class PasarguardNodeTest extends TestCase
         $bot->hearCallbackQueryData('none')->reply(); // wireguard profile picker: "بدون وایرگارد"
 
         Queue::assertPushed(UpdateWireguardsJob::class);
+    }
+
+    public function test_sync_profile_dns_returns_null_when_cloudflare_is_not_configured(): void
+    {
+        config(['dns.cloudflare.api_token' => null, 'dns.cloudflare.zone_id' => null]);
+
+        $result = (new PasarguardNodeInstaller())->syncProfileDns('germany', '9.9.9.9');
+
+        $this->assertNull($result);
+    }
+
+    public function test_sync_profile_dns_upserts_the_a_record_for_the_profiles_domain(): void
+    {
+        config([
+            'dns.cloudflare.api_token' => 'token-1',
+            'dns.cloudflare.zone_id' => 'zone-1',
+            'dns.cloudflare.node_domain' => 'node.pcbot.top',
+        ]);
+
+        Http::fake([
+            'api.cloudflare.com/client/v4/zones/zone-1/dns_records?*' => Http::response(['success' => true, 'result' => []]),
+            'api.cloudflare.com/client/v4/zones/zone-1/dns_records' => Http::response(['success' => true, 'result' => ['id' => 'rec-1']]),
+        ]);
+
+        $result = (new PasarguardNodeInstaller())->syncProfileDns('germany', '9.9.9.9');
+
+        $this->assertSame('germany.node.pcbot.top', $result['domain']);
+        $this->assertNull($result['error']);
+
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && ($request['name'] ?? null) === 'germany.node.pcbot.top'
+            && ($request['content'] ?? null) === '9.9.9.9');
+    }
+
+    public function test_sync_profile_dns_returns_the_error_on_failure(): void
+    {
+        config([
+            'dns.cloudflare.api_token' => 'token-1',
+            'dns.cloudflare.zone_id' => 'zone-1',
+            'dns.cloudflare.node_domain' => 'node.pcbot.top',
+        ]);
+
+        Http::fake([
+            'api.cloudflare.com/client/v4/zones/zone-1/dns_records?*' => Http::response(['success' => true, 'result' => []]),
+            'api.cloudflare.com/client/v4/zones/zone-1/dns_records' => Http::response([
+                'success' => false,
+                'errors' => [['message' => 'Invalid zone']],
+            ], 400),
+        ]);
+
+        $result = (new PasarguardNodeInstaller())->syncProfileDns('germany', '9.9.9.9');
+
+        $this->assertSame('germany.node.pcbot.top', $result['domain']);
+        $this->assertStringContainsString('Invalid zone', $result['error']);
     }
 }

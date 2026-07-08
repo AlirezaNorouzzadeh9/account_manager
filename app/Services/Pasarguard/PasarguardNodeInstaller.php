@@ -177,6 +177,34 @@ YAML;
     }
 
     /**
+     * Points a WireGuard profile's DNS subdomain (e.g. germany.node.pcbot.top)
+     * at a server's IP — independent of which certificate/panel-registration
+     * strategy that server's node itself uses. Since "🔄 تغییر سرور" now
+     * registers each replacement node in the PasarGuard panel by its own IP
+     * (see ReplaceServerFinishJob), the domain is no longer load-bearing for
+     * the panel connection, but is still kept in sync as a stable
+     * convenience address for the profile.
+     *
+     * @return array{domain: string, error: ?string}|null null when Cloudflare isn't configured at all
+     */
+    public function syncProfileDns(string $profileName, string $ip): ?array
+    {
+        if (! $this->dnsConfigured()) {
+            return null;
+        }
+
+        $domain = "{$profileName}.".config('dns.cloudflare.node_domain');
+
+        try {
+            $this->dnsClient()->upsertARecord($domain, $ip);
+
+            return ['domain' => $domain, 'error' => null];
+        } catch (Throwable $e) {
+            return ['domain' => $domain, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
      * A droplet that just answered an ICMP ping (which is all the "replace
      * server" flow waits for before handing off here) doesn't necessarily
      * have sshd up yet — cloud-init/systemd can still be a few seconds
