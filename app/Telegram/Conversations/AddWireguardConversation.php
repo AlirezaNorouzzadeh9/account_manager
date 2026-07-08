@@ -82,14 +82,13 @@ class AddWireguardConversation extends Conversation
             return;
         }
 
-        WireguardLocation::create([
+        $location = WireguardLocation::create([
             'name' => $this->name,
             'ip' => $this->ip,
             'server_public_key' => $key,
         ]);
 
-        $bot->sendMessage("✅ لوکیشن «{$this->name}» ذخیره شد و روی هر سروری که وایرگارد فعال شود اعمال می‌شود.");
         $this->end();
-        WireguardMenu::begin($bot);
+        WireguardMenu::begin($bot, $bot->userId(), $bot->chatId(), [$location->id, true]);
     }
 }

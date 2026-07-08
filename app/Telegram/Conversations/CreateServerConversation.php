@@ -9,6 +9,7 @@ use App\Services\Providers\ServerProvisioningService;
 use App\Telegram\Support\Cancellable;
 use App\Telegram\Support\CancellableTextStep;
 use App\Telegram\Support\EditsInPlace;
+use App\Telegram\Support\FormatsServerSize;
 use App\Telegram\Support\GridButtons;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
@@ -19,16 +20,19 @@ class CreateServerConversation extends InlineMenu
     use Cancellable;
     use CancellableTextStep;
     use EditsInPlace;
+    use FormatsServerSize;
     use GridButtons;
 
     protected ?int $panelId = null;
     protected ?string $region = null;
     protected ?string $regionLabel = null;
     protected ?string $size = null;
+    protected ?string $sizeLabel = null;
     protected ?string $image = null;
     protected ?string $imageLabel = null;
     protected ?string $hostname = null;
     protected array $regionLabels = [];
+    protected array $sizeLabels = [];
     protected array $imageLabels = [];
 
     public function start(Nutgram $bot): void
@@ -118,20 +122,22 @@ class CreateServerConversation extends InlineMenu
             return;
         }
 
+        usort($sizes, fn (array $a, array $b) => [$a['vcpus'], $a['memory'], (float) $a['price_monthly']]
+            <=> [$b['vcpus'], $b['memory'], (float) $b['price_monthly']]);
+
+        $this->sizeLabels = [];
+
+        foreach ($sizes as $s) {
+            $this->sizeLabels[$s['slug']] = $this->formatSizeLabel($s);
+        }
+
         $this->clearButtons();
         $this->menuText('پلن (سایز) سرور را انتخاب کنید:');
 
-        $this->addButtonGrid(array_map(function (array $s) {
-            $label = sprintf(
-                '💽 %s | %dvCPU/%dMB | $%s',
-                $s['slug'],
-                $s['vcpus'],
-                $s['memory'],
-                $s['price_monthly']
-            );
-
-            return InlineKeyboardButton::make($label, callback_data: "{$s['slug']}@chooseSize");
-        }, $sizes), perRow: 1);
+        $this->addButtonGrid(array_map(
+            fn (array $s) => InlineKeyboardButton::make($this->sizeLabels[$s['slug']], callback_data: "{$s['slug']}@chooseSize"),
+            $sizes
+        ), perRow: 1);
 
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToRegions'));
         $this->showMenu();
@@ -140,6 +146,7 @@ class CreateServerConversation extends InlineMenu
     public function chooseSize(Nutgram $bot, string $data): void
     {
         $this->size = $data;
+        $this->sizeLabel = $this->sizeLabels[$data] ?? $data;
         $this->showImages($bot);
     }
 
@@ -216,7 +223,7 @@ class CreateServerConversation extends InlineMenu
             "خلاصه سرور جدید:\n".
             "🏷 نام: {$this->hostname}\n".
             "📍 دیتاسنتر: {$this->regionLabel}\n".
-            "💽 پلن: {$this->size}\n".
+            "پلن: {$this->sizeLabel}\n".
             "💿 سیستم‌عامل: {$this->imageLabel}\n\n".
             'ساخته شود؟'
         );

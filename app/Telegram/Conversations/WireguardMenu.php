@@ -3,6 +3,7 @@
 namespace App\Telegram\Conversations;
 
 use App\Models\WireguardLocation;
+use App\Telegram\Support\EditsInPlace;
 use App\Telegram\Support\GridButtons;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
@@ -16,12 +17,21 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
  */
 class WireguardMenu extends InlineMenu
 {
+    use EditsInPlace;
     use GridButtons;
 
     protected ?int $currentLocationId = null;
 
-    public function start(Nutgram $bot): void
+    public function start(Nutgram $bot, ?int $focusLocationId = null, bool $justCreated = false): void
     {
+        $this->editInPlaceFromCallback($bot);
+
+        if ($focusLocationId !== null) {
+            $this->showLocation($bot, (string) $focusLocationId, $justCreated);
+
+            return;
+        }
+
         $locations = WireguardLocation::orderBy('name')->get();
 
         $this->clearButtons();
@@ -44,7 +54,7 @@ class WireguardMenu extends InlineMenu
 
     public function backToSettings(Nutgram $bot): void
     {
-        $this->closeMenu();
+        // No closeMenu(): SettingsMenu edits this same message in place.
         $this->end();
         SettingsMenu::begin($bot);
     }
@@ -58,12 +68,12 @@ class WireguardMenu extends InlineMenu
 
     public function profiles(Nutgram $bot): void
     {
-        $this->closeMenu();
+        // No closeMenu(): WireguardProfileMenu edits this same message in place.
         $this->end();
         WireguardProfileMenu::begin($bot);
     }
 
-    public function showLocation(Nutgram $bot, string $data): void
+    public function showLocation(Nutgram $bot, string $data, bool $justCreated = false): void
     {
         $location = WireguardLocation::find((int) $data);
 
@@ -76,6 +86,7 @@ class WireguardMenu extends InlineMenu
 
         $this->clearButtons();
         $this->menuText(
+            ($justCreated ? "✅ لوکیشن «{$location->name}» ذخیره شد.\n\n" : '').
             "نام: {$location->name}\n".
             "آی‌پی: {$location->ip}\n".
             "PublicKey سرور: {$location->server_public_key}"

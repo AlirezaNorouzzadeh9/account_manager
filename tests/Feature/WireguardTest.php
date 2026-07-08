@@ -44,11 +44,13 @@ class WireguardTest extends TestCase
         $this->assertSame('89.249.73.213', $location->ip);
         $this->assertSame('9wZOjtwuKEc0GBcvc3xJQ4Kjo8G3EMXu6zJRzbanOjc=', $location->server_public_key);
 
-        // After saving, the location list reopens (with the new location in it).
+        // After saving, the new location's OWN detail screen opens directly
+        // (not the full list) with a save confirmation folded into it.
         $history = $bot->getRequestHistory();
         [$request] = array_values(end($history));
         $body = json_decode((string) $request->getBody(), true);
-        $this->assertStringContainsString('🔒 germany', json_encode($body['reply_markup'] ?? [], JSON_UNESCAPED_UNICODE));
+        $this->assertStringContainsString('ذخیره شد', $body['text']);
+        $this->assertStringContainsString('germany', $body['text']);
     }
 
     public function test_back_button_during_add_location_cancels_and_returns_to_list(): void
@@ -145,11 +147,13 @@ class WireguardTest extends TestCase
         $this->assertSame('server-1', $profile->name);
         $this->assertSame('fake-private-key', $profile->private_key);
 
-        // After saving, the profile list reopens (with the new profile in it).
+        // After saving, the new profile's OWN detail screen opens directly
+        // (not the full list) with a save confirmation folded into it.
         $history = $bot->getRequestHistory();
         [$request] = array_values(end($history));
         $body = json_decode((string) $request->getBody(), true);
-        $this->assertStringContainsString('🪪 server-1', json_encode($body['reply_markup'] ?? [], JSON_UNESCAPED_UNICODE));
+        $this->assertStringContainsString('ذخیره شد', $body['text']);
+        $this->assertStringContainsString('server-1', $body['text']);
     }
 
     public function test_deleting_a_profile_removes_it_and_clears_it_from_servers(): void

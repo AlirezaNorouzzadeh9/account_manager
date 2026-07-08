@@ -8,6 +8,7 @@ use App\Models\ServerSecret;
 use App\Services\Providers\ProviderException;
 use App\Services\Providers\ServerProvisioningService;
 use App\Telegram\Support\Cancellable;
+use App\Telegram\Support\EditsInPlace;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
@@ -27,12 +28,14 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 class ReplaceServerConversation extends InlineMenu
 {
     use Cancellable;
+    use EditsInPlace;
 
     protected ?int $panelId = null;
     protected ?string $serverId = null;
 
     public function start(Nutgram $bot, int $panelId, string $serverId): void
     {
+        $this->editInPlaceFromCallback($bot);
         $this->panelId = $panelId;
         $this->serverId = $serverId;
 

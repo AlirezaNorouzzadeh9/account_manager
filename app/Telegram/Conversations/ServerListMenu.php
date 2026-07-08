@@ -14,6 +14,7 @@ use App\Services\Providers\ProviderException;
 use App\Services\Providers\ProviderManager;
 use App\Telegram\Support\Cancellable;
 use App\Telegram\Support\EditsInPlace;
+use App\Telegram\Support\FormatsServerSize;
 use App\Telegram\Support\GridButtons;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
@@ -23,6 +24,7 @@ class ServerListMenu extends InlineMenu
 {
     use Cancellable;
     use EditsInPlace;
+    use FormatsServerSize;
     use GridButtons;
 
     protected ?int $panelId = null;
@@ -179,10 +181,11 @@ class ServerListMenu extends InlineMenu
         $regionName = $server['region']['name'] ?? $server['region']['slug'] ?? '-';
 
         $size = $server['size'] ?? [];
-        $vcpus = $size['vcpus'] ?? '-';
-        $ramGb = isset($size['memory']) ? round($size['memory'] / 1024, 1) : '-';
+        $size['slug'] ??= $server['size_slug'] ?? '';
         $diskGb = $size['disk'] ?? '-';
-        $price = isset($size['price_monthly']) ? '$'.$size['price_monthly'].'/ماه' : '-';
+        $sizeLabel = isset($size['vcpus'], $size['memory'], $size['price_monthly'])
+            ? $this->formatSizeLabel($size)
+            : ($server['size_slug'] ?? '-');
 
         $password = ServerSecret::where('panel_id', $this->panelId)
             ->where('provider_server_id', $this->serverId)
@@ -196,8 +199,7 @@ class ServerListMenu extends InlineMenu
             "➕ آی‌پی رزرو: `{$reservedIp}`\n".
             "🔑 پسورد روت: `{$password}`\n".
             "{$flag} دیتاسنتر: {$regionName}\n".
-            "💽 پلن: {$server['size_slug']} ({$vcpus} vCPU / {$ramGb}GB RAM / {$diskGb}GB Disk)\n".
-            "💰 قیمت: {$price}\n".
+            "پلن: {$sizeLabel} | 💿 دیسک: {$diskGb}GB\n".
             "💿 سیستم‌عامل: {$server['image']['distribution']} {$server['image']['name']}",
             ['parse_mode' => 'Markdown']
         );
@@ -314,14 +316,16 @@ class ServerListMenu extends InlineMenu
             return;
         }
 
+        usort($sizes, fn (array $a, array $b) => [$a['vcpus'], $a['memory'], (float) $a['price_monthly']]
+            <=> [$b['vcpus'], $b['memory'], (float) $b['price_monthly']]);
+
         $this->clearButtons();
         $this->menuText('پلن جدید را انتخاب کنید:');
 
-        $this->addButtonGrid(array_map(function (array $s) {
-            $label = sprintf('💽 %s | %dvCPU/%dMB | $%s', $s['slug'], $s['vcpus'], $s['memory'], $s['price_monthly']);
-
-            return InlineKeyboardButton::make($label, callback_data: "{$s['slug']}@doResize");
-        }, $sizes), perRow: 1);
+        $this->addButtonGrid(array_map(
+            fn (array $s) => InlineKeyboardButton::make($this->formatSizeLabel($s), callback_data: "{$s['slug']}@doResize"),
+            $sizes
+        ), perRow: 1);
 
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToServer'));
         $this->showMenu();
@@ -573,7 +577,9 @@ class ServerListMenu extends InlineMenu
 
     public function replaceServer(Nutgram $bot): void
     {
-        $this->closeMenu();
+        // No closeMenu() here: ReplaceServerConversation edits this same
+        // message in place (EditsInPlace) — closing it first would delete
+        // the message before there's anything left to edit.
         $this->end();
         ReplaceServerConversation::begin($bot, $bot->userId(), $bot->chatId(), [$this->panelId, $this->serverId]);
     }

@@ -16,9 +16,15 @@ class PanelsMenu extends InlineMenu
     use EditsInPlace;
     use GridButtons;
 
-    public function start(Nutgram $bot): void
+    public function start(Nutgram $bot, ?int $focusPanelId = null, bool $justCreated = false): void
     {
         $this->editInPlaceFromCallback($bot);
+
+        if ($focusPanelId !== null) {
+            $this->showPanel($bot, (string) $focusPanelId, $justCreated);
+
+            return;
+        }
 
         $panels = Panel::query()->latest()->get();
 
@@ -45,12 +51,12 @@ class PanelsMenu extends InlineMenu
 
     public function addPanel(Nutgram $bot): void
     {
-        $this->closeMenu();
+        // No closeMenu(): AddPanelConversation edits this same message in place.
         $this->end();
         AddPanelConversation::begin($bot);
     }
 
-    public function showPanel(Nutgram $bot, string $data): void
+    public function showPanel(Nutgram $bot, string $data, bool $justCreated = false): void
     {
         $panel = Panel::find((int) $data);
 
@@ -62,6 +68,7 @@ class PanelsMenu extends InlineMenu
 
         $this->clearButtons();
         $this->menuText(
+            ($justCreated ? "✅ پنل «{$panel->name}» با موفقیت اضافه شد.\n\n" : '').
             "نام: {$panel->name}\n".
             "ارائه‌دهنده: {$panel->provider->label()}\n".
             'ایمیل: '.($panel->meta['email'] ?? '-')

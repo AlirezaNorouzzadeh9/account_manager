@@ -7,6 +7,7 @@ use App\Models\Panel;
 use App\Services\Providers\ProviderException;
 use App\Services\Providers\ProviderManager;
 use App\Telegram\Support\CancellableTextStep;
+use App\Telegram\Support\EditsInPlace;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
@@ -14,12 +15,14 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 class AddPanelConversation extends InlineMenu
 {
     use CancellableTextStep;
+    use EditsInPlace;
 
     protected ?string $provider = null;
     protected ?string $name = null;
 
     public function start(Nutgram $bot): void
     {
+        $this->editInPlaceFromCallback($bot);
         $this->clearButtons();
         $this->menuText('کدام دیتاسنتر را می‌خواهید اضافه کنید؟');
 
@@ -34,7 +37,7 @@ class AddPanelConversation extends InlineMenu
 
     public function backToPanels(Nutgram $bot): void
     {
-        $this->closeMenu();
+        // No closeMenu(): PanelsMenu edits this same message in place.
         $this->end();
         PanelsMenu::begin($bot);
     }
@@ -120,10 +123,7 @@ class AddPanelConversation extends InlineMenu
         } catch (\Throwable) {
         }
 
-        $bot->sendMessage(
-            "✅ پنل «{$panel->name}» با موفقیت اضافه شد.\n".
-            'ایمیل اکانت: '.($account['email'] ?? '-')
-        );
         $this->end();
+        PanelsMenu::begin($bot, $bot->userId(), $bot->chatId(), [$panel->id, true]);
     }
 }

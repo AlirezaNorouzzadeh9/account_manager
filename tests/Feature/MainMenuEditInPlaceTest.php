@@ -115,4 +115,78 @@ class MainMenuEditInPlaceTest extends TestCase
         $this->assertArrayHasKey('message_id', $body);
         $this->assertStringContainsString('یکی از گزینه‌های زیر را انتخاب کنید', $body['text']);
     }
+
+    public function test_tapping_wireguard_from_settings_edits_in_place(): void
+    {
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply(); // "🔒 مدیریت وایرگاردها"
+
+        $history = $bot->getRequestHistory();
+        $paths = array_map(fn ($item) => array_values($item)[0]->getUri()->getPath(), $history);
+        $this->assertNotContains(true, array_map(fn ($p) => str_contains($p, 'deleteMessage'), $paths));
+
+        ['path' => $path, 'body' => $body] = $this->lastRequest($bot);
+        $this->assertStringContainsString('editMessageText', $path);
+        $this->assertStringContainsString('وایرگارد', $body['text']);
+    }
+
+    public function test_back_from_wireguard_to_settings_edits_in_place(): void
+    {
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply(); // wireguard
+        $bot->hearCallbackQueryData('x@@')->reply(); // "🔙 بازگشت" (3rd x-prefixed button, empty locations)
+
+        $history = $bot->getRequestHistory();
+        $paths = array_map(fn ($item) => array_values($item)[0]->getUri()->getPath(), $history);
+        $this->assertNotContains(true, array_map(fn ($p) => str_contains($p, 'deleteMessage'), $paths));
+
+        ['path' => $path, 'body' => $body] = $this->lastRequest($bot);
+        $this->assertStringContainsString('editMessageText', $path);
+        $this->assertStringContainsString('تنظیمات', $body['text']);
+    }
+
+    public function test_tapping_profiles_from_wireguard_edits_in_place(): void
+    {
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply(); // wireguard
+        $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (2nd x-prefixed button, empty locations)
+
+        $history = $bot->getRequestHistory();
+        $paths = array_map(fn ($item) => array_values($item)[0]->getUri()->getPath(), $history);
+        $this->assertNotContains(true, array_map(fn ($p) => str_contains($p, 'deleteMessage'), $paths));
+
+        ['path' => $path, 'body' => $body] = $this->lastRequest($bot);
+        $this->assertStringContainsString('editMessageText', $path);
+        $this->assertStringContainsString('پروفایل', $body['text']);
+    }
+
+    public function test_tapping_add_panel_from_panels_menu_edits_in_place(): void
+    {
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('panels:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply(); // "➕ افزودن پنل" (first x button, empty list)
+
+        $history = $bot->getRequestHistory();
+        $paths = array_map(fn ($item) => array_values($item)[0]->getUri()->getPath(), $history);
+        $this->assertNotContains(true, array_map(fn ($p) => str_contains($p, 'deleteMessage'), $paths));
+
+        ['path' => $path, 'body' => $body] = $this->lastRequest($bot);
+        $this->assertStringContainsString('editMessageText', $path);
+        $this->assertStringContainsString('دیتاسنتر', $body['text']);
+    }
 }

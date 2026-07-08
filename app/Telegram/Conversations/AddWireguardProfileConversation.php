@@ -72,13 +72,12 @@ class AddWireguardProfileConversation extends Conversation
             return;
         }
 
-        WireguardProfile::create([
+        $profile = WireguardProfile::create([
             'name' => $this->name,
             'private_key' => $key,
         ]);
 
-        $bot->sendMessage("✅ پروفایل «{$this->name}» ذخیره شد.");
         $this->end();
-        WireguardProfileMenu::begin($bot);
+        WireguardProfileMenu::begin($bot, $bot->userId(), $bot->chatId(), [$profile->id, true]);
     }
 }

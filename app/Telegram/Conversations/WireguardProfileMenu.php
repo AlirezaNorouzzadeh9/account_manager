@@ -3,6 +3,7 @@
 namespace App\Telegram\Conversations;
 
 use App\Models\WireguardProfile;
+use App\Telegram\Support\EditsInPlace;
 use App\Telegram\Support\GridButtons;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
@@ -15,12 +16,21 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
  */
 class WireguardProfileMenu extends InlineMenu
 {
+    use EditsInPlace;
     use GridButtons;
 
     protected ?int $currentProfileId = null;
 
-    public function start(Nutgram $bot): void
+    public function start(Nutgram $bot, ?int $focusProfileId = null, bool $justCreated = false): void
     {
+        $this->editInPlaceFromCallback($bot);
+
+        if ($focusProfileId !== null) {
+            $this->showProfile($bot, (string) $focusProfileId, $justCreated);
+
+            return;
+        }
+
         $profiles = WireguardProfile::orderBy('name')->get();
 
         $this->clearButtons();
@@ -42,7 +52,7 @@ class WireguardProfileMenu extends InlineMenu
 
     public function backToWireguard(Nutgram $bot): void
     {
-        $this->closeMenu();
+        // No closeMenu(): WireguardMenu edits this same message in place.
         $this->end();
         WireguardMenu::begin($bot);
     }
@@ -54,7 +64,7 @@ class WireguardProfileMenu extends InlineMenu
         AddWireguardProfileConversation::begin($bot);
     }
 
-    public function showProfile(Nutgram $bot, string $data): void
+    public function showProfile(Nutgram $bot, string $data, bool $justCreated = false): void
     {
         $profile = WireguardProfile::find((int) $data);
 
@@ -70,7 +80,7 @@ class WireguardProfileMenu extends InlineMenu
             : "\ncore_id تنظیم نشده — بدون آن، بعد از تغییر IP باید نود را دستی از پنل ریست کنید.";
 
         $this->clearButtons();
-        $this->menuText("نام: {$profile->name}".$coreIdLine);
+        $this->menuText(($justCreated ? "✅ پروفایل «{$profile->name}» ذخیره شد.\n\n" : '')."نام: {$profile->name}".$coreIdLine);
         $this->addButtonRow(InlineKeyboardButton::make('👁 نمایش PrivateKey', callback_data: 'x@revealPrivateKey'));
         $this->addButtonRow(InlineKeyboardButton::make('🧩 تنظیم core_id', callback_data: 'x@setCoreId'));
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف پروفایل', callback_data: 'x@confirmDeleteProfile'));

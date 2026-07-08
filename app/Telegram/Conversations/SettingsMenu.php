@@ -18,14 +18,14 @@ class SettingsMenu extends InlineMenu
         $this->editInPlaceFromCallback($bot);
         $this->clearButtons();
         $this->menuText('⚙️ تنظیمات:');
-        $this->addButtonRow(InlineKeyboardButton::make('🔒 وایرگاردها', callback_data: 'x@wireguard'));
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@cancel'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔒 مدیریت وایرگاردها', callback_data: 'x@wireguard'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت به منوی اصلی', callback_data: 'x@cancel'));
         $this->showMenu();
     }
 
     public function wireguard(Nutgram $bot): void
     {
-        $this->closeMenu();
+        // No closeMenu(): WireguardMenu edits this same message in place.
         $this->end();
         WireguardMenu::begin($bot);
     }
