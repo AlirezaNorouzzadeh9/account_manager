@@ -36,9 +36,9 @@ class PanelsMenu extends InlineMenu
         $this->clearButtons();
 
         if ($panels->isEmpty()) {
-            $this->menuText($intro.'هنوز هیچ پنلی اضافه نکرده‌اید.');
+            $this->menuText($this->rtl($intro.'هنوز هیچ پنلی اضافه نکرده‌اید.'));
         } else {
-            $this->menuText($intro.'پنل‌های شما:');
+            $this->menuText($this->rtl($intro.'پنل‌های شما:'));
             $this->addButtonGrid($panels->map(function (Panel $panel) {
                 $status = $panel->is_active ? '🟢' : '🔴';
 

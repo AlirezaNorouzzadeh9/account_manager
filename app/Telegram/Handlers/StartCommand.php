@@ -2,12 +2,15 @@
 
 namespace App\Telegram\Handlers;
 
+use App\Telegram\Support\FormatsRtlText;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 class StartCommand
 {
+    use FormatsRtlText;
+
     public function __invoke(Nutgram $bot): void
     {
         $bot->sendMessage(text: self::text(), reply_markup: self::keyboard());
@@ -15,12 +18,14 @@ class StartCommand
 
     public static function text(): string
     {
-        return "به ربات مدیریت سرورهای ابری خوش آمدید! 👋\n\n".
+        return self::rtl(
+            "به ربات مدیریت سرورهای ابری خوش آمدید! 👋\n\n".
             "🖥 پنل‌های من — افزودن و مدیریت پنل‌های سرویس‌دهنده (مثل DigitalOcean)\n".
             "📋 سرورهای من — مشاهده و مدیریت سرورهای ساخته‌شده\n".
             "➕ ساخت سرور — ساخت یک سرور ابری جدید\n".
             "⚙️ تنظیمات — مدیریت لوکیشن‌ها و پروفایل‌های وایرگارد\n\n".
-            'یکی از گزینه‌های زیر را انتخاب کنید:';
+            'یکی از گزینه‌های زیر را انتخاب کنید:'
+        );
     }
 
     public static function keyboard(): InlineKeyboardMarkup

@@ -142,7 +142,7 @@ class MainMenuEditInPlaceTest extends TestCase
         $bot->hearText('/start')->reply();
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x')->reply(); // wireguard
-        $bot->hearCallbackQueryData('x@@')->reply(); // "🔙 بازگشت" (3rd x-prefixed button, empty locations)
+        $bot->hearCallbackQueryData('x@')->reply(); // "🔙 بازگشت" (2nd x-prefixed button, empty locations)
 
         $history = $bot->getRequestHistory();
         $paths = array_map(fn ($item) => array_values($item)[0]->getUri()->getPath(), $history);
@@ -153,15 +153,14 @@ class MainMenuEditInPlaceTest extends TestCase
         $this->assertStringContainsString('تنظیمات', $body['text']);
     }
 
-    public function test_tapping_profiles_from_wireguard_edits_in_place(): void
+    public function test_tapping_profiles_from_settings_edits_in_place(): void
     {
         $bot = $this->bot();
         $bot->willStartConversation();
 
         $bot->hearText('/start')->reply();
         $bot->hearCallbackQueryData('settings:menu')->reply();
-        $bot->hearCallbackQueryData('x')->reply(); // wireguard
-        $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (2nd x-prefixed button, empty locations)
+        $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (2nd x-prefixed button on settings menu, direct)
 
         $history = $bot->getRequestHistory();
         $paths = array_map(fn ($item) => array_values($item)[0]->getUri()->getPath(), $history);

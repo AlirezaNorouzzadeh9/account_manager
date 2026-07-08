@@ -11,7 +11,7 @@ namespace App\Telegram\Support;
  */
 trait FormatsRtlText
 {
-    protected function rtl(string $text): string
+    protected static function rtl(string $text): string
     {
         return implode("\n", array_map(
             fn (string $line) => $line === '' ? '' : "\u{200F}{$line}",

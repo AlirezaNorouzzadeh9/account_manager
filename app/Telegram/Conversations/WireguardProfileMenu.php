@@ -39,13 +39,13 @@ class WireguardProfileMenu extends InlineMenu
             "➕ افزودن پروفایل — یک پروفایل جدید بسازید\n\n";
 
         $this->clearButtons();
-        $this->menuText(
+        $this->menuText($this->rtl(
             $intro.(
                 $profiles->isEmpty()
                     ? "هیچ پروفایلی اضافه نکرده‌اید.\nبا «افزودن پروفایل» شروع کنید."
                     : 'لیست پروفایل‌ها:'
             )
-        );
+        ));
 
         $this->addButtonGrid($profiles->map(fn (WireguardProfile $profile) => InlineKeyboardButton::make(
             "🪪 {$profile->name}",
@@ -53,14 +53,14 @@ class WireguardProfileMenu extends InlineMenu
         ))->all());
 
         $this->addButtonRow(InlineKeyboardButton::make('➕ افزودن پروفایل', callback_data: 'x@addProfile'));
-        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToWireguard'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToSettings'));
         $this->showMenu();
     }
 
-    public function backToWireguard(Nutgram $bot): void
+    public function backToSettings(Nutgram $bot): void
     {
         $this->endWithoutClosing();
-        WireguardMenu::begin($bot);
+        SettingsMenu::begin($bot);
     }
 
     public function addProfile(Nutgram $bot): void

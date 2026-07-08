@@ -37,17 +37,16 @@ class WireguardMenu extends InlineMenu
         $locations = WireguardLocation::orderBy('name')->get();
 
         $intro = "🔒 لوکیشن‌های وایرگارد — روی هر سروری که وایرگارد فعال شود، همه‌ی این‌ها با هم فعال می‌شوند\n".
-            "➕ افزودن لوکیشن — یک لوکیشن جدید اضافه کنید\n".
-            "🪪 پروفایل‌ها — مدیریت پروفایل‌های وایرگارد (PrivateKey هر سرور)\n\n";
+            "➕ افزودن لوکیشن — یک لوکیشن جدید اضافه کنید\n\n";
 
         $this->clearButtons();
-        $this->menuText(
+        $this->menuText($this->rtl(
             $intro.(
                 $locations->isEmpty()
                     ? "هیچ لوکیشن وایرگاردی اضافه نکرده‌اید.\nبا «افزودن لوکیشن» شروع کنید."
                     : 'لیست لوکیشن‌ها:'
             )
-        );
+        ));
 
         $this->addButtonGrid($locations->map(fn (WireguardLocation $location) => InlineKeyboardButton::make(
             "🔒 {$location->name}",
@@ -55,7 +54,6 @@ class WireguardMenu extends InlineMenu
         ))->all());
 
         $this->addButtonRow(InlineKeyboardButton::make('➕ افزودن لوکیشن', callback_data: 'x@addLocation'));
-        $this->addButtonRow(InlineKeyboardButton::make('🪪 پروفایل‌ها', callback_data: 'x@profiles'));
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToSettings'));
         $this->showMenu();
     }
@@ -71,12 +69,6 @@ class WireguardMenu extends InlineMenu
         $this->closeMenu();
         $this->end();
         AddWireguardConversation::begin($bot);
-    }
-
-    public function profiles(Nutgram $bot): void
-    {
-        $this->endWithoutClosing();
-        WireguardProfileMenu::begin($bot);
     }
 
     public function showLocation(Nutgram $bot, string $data, bool $justCreated = false): void
