@@ -4,6 +4,7 @@
 use App\Models\Panel;
 use App\Services\Providers\ProviderManager;
 use App\Telegram\Conversations\AddPanelConversation;
+use App\Telegram\Conversations\ConnectServerConversation;
 use App\Telegram\Conversations\CreateServerConversation;
 use App\Telegram\Conversations\NodePasswordConversation;
 use App\Telegram\Conversations\PanelsMenu;
@@ -35,6 +36,7 @@ $bot->onCallbackQueryData('panels:menu', fn (Nutgram $bot) => PanelsMenu::begin(
 $bot->onCallbackQueryData('panels:add', fn (Nutgram $bot) => AddPanelConversation::begin($bot));
 $bot->onCallbackQueryData('server:create', fn (Nutgram $bot) => CreateServerConversation::begin($bot));
 $bot->onCallbackQueryData('server:list', fn (Nutgram $bot) => ServerListMenu::begin($bot));
+$bot->onCallbackQueryData('server:connect', fn (Nutgram $bot) => ConnectServerConversation::begin($bot));
 $bot->onCallbackQueryData('settings:menu', fn (Nutgram $bot) => SettingsMenu::begin($bot));
 
 $bot->onCallbackQueryData(

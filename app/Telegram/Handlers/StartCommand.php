@@ -23,6 +23,7 @@ class StartCommand
             "🖥 پنل‌های من — افزودن و مدیریت پنل‌های سرویس‌دهنده (مثل DigitalOcean)\n".
             "📋 سرورهای من — مشاهده و مدیریت سرورهای ساخته‌شده\n".
             "➕ ساخت سرور — ساخت یک سرور ابری جدید\n".
+            "🔌 اتصال به سرور — نصب وایرگارد روی یک سرور دیگر با آی‌پی/یوزر/پسورد دستی\n".
             "⚙️ تنظیمات — مدیریت لوکیشن‌ها و پروفایل‌های وایرگارد\n\n".
             'یکی از گزینه‌های زیر را انتخاب کنید:'
         );
@@ -41,6 +42,9 @@ class StartCommand
             ->addRow(
                 InlineKeyboardButton::make('📋 سرورهای من', callback_data: 'server:list'),
                 InlineKeyboardButton::make('➕ ساخت سرور', callback_data: 'server:create'),
+            )
+            ->addRow(
+                InlineKeyboardButton::make('🔌 اتصال به سرور', callback_data: 'server:connect'),
             )
             ->addRow(
                 InlineKeyboardButton::make('⚙️ تنظیمات', callback_data: 'settings:menu'),

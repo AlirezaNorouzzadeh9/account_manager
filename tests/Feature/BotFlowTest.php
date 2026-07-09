@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\ConnectServerWireguardsJob;
 use App\Jobs\CreateServerReadyJob;
 use App\Models\Panel;
+use App\Models\WireguardProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -191,5 +193,57 @@ class BotFlowTest extends TestCase
         $bot->hearCallbackQueryData('yes')->reply();
 
         Queue::assertPushed(CreateServerReadyJob::class);
+    }
+
+    public function test_connect_server_conversation_dispatches_wireguards_job(): void
+    {
+        Queue::fake();
+
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-private-key']);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('server:connect')->reply();
+        $bot->hearText('203.0.113.10')->reply();
+        $bot->hearText('root')->reply();
+        $bot->hearText('super-secret-pass')->reply();
+        $bot->hearCallbackQueryData("{$profile->id}")->reply(); // chooseProfile
+        $bot->hearCallbackQueryData('yes')->reply(); // confirm
+
+        Queue::assertPushed(ConnectServerWireguardsJob::class, function (ConnectServerWireguardsJob $job) {
+            return $this->privateProp($job, 'host') === '203.0.113.10'
+                && $this->privateProp($job, 'username') === 'root'
+                && $this->privateProp($job, 'password') === 'super-secret-pass'
+                && $this->privateProp($job, 'wireguardPrivateKey') === 'fake-private-key';
+        });
+    }
+
+    public function test_connect_server_conversation_rejects_invalid_ip(): void
+    {
+        Queue::fake();
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('server:connect')->reply();
+        $bot->hearText('not-an-ip')->reply();
+
+        $history = $bot->getRequestHistory();
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+        $this->assertStringContainsString('آی‌پی نامعتبر', $body['text']);
+
+        Queue::assertNotPushed(ConnectServerWireguardsJob::class);
+    }
+
+    protected function privateProp(object $object, string $property): mixed
+    {
+        $ref = new \ReflectionProperty($object, $property);
+        $ref->setAccessible(true);
+
+        return $ref->getValue($object);
     }
 }
