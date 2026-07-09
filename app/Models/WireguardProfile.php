@@ -13,6 +13,7 @@ class WireguardProfile extends Model
 {
     protected $fillable = [
         'name',
+        'country',
         'private_key',
         'core_id',
     ];

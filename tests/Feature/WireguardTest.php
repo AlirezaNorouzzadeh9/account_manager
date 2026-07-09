@@ -129,7 +129,7 @@ class WireguardTest extends TestCase
         $this->assertNull($location->fresh());
     }
 
-    public function test_add_profile_stores_name_and_private_key(): void
+    public function test_add_profile_stores_name_country_and_private_key(): void
     {
         $bot = $this->bot();
         $bot->willStartConversation();
@@ -139,11 +139,13 @@ class WireguardTest extends TestCase
         $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (2nd x-prefixed button on settings menu, direct)
         $bot->hearCallbackQueryData('x')->reply(); // "➕ افزودن پروفایل" (first x button, empty menu)
         $bot->hearText('server-1')->reply();
+        $bot->hearText('Germany')->reply();
         $bot->hearText('fake-private-key')->reply();
 
         $profile = WireguardProfile::first();
         $this->assertNotNull($profile);
         $this->assertSame('server-1', $profile->name);
+        $this->assertSame('Germany', $profile->country);
         $this->assertSame('fake-private-key', $profile->private_key);
 
         // After saving, the new profile's OWN detail screen opens directly
@@ -153,6 +155,22 @@ class WireguardTest extends TestCase
         $body = json_decode((string) $request->getBody(), true);
         $this->assertStringContainsString('ذخیره شد', $body['text']);
         $this->assertStringContainsString('server-1', $body['text']);
+    }
+
+    public function test_add_profile_skips_country_when_dash_is_sent(): void
+    {
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها"
+        $bot->hearCallbackQueryData('x')->reply(); // "➕ افزودن پروفایل"
+        $bot->hearText('server-1')->reply();
+        $bot->hearText('-')->reply();
+        $bot->hearText('fake-private-key')->reply();
+
+        $this->assertNull(WireguardProfile::first()->country);
     }
 
     public function test_deleting_a_profile_removes_it_and_clears_it_from_servers(): void
@@ -166,7 +184,7 @@ class WireguardTest extends TestCase
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (direct from settings menu)
         $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
-        $bot->hearCallbackQueryData('x@@')->reply(); // "🗑 حذف پروفایل" (3rd x-prefixed button, after core_id)
+        $bot->hearCallbackQueryData('x@@@')->reply(); // "🗑 حذف پروفایل" (4th x-prefixed button, after country/core_id)
         $bot->hearCallbackQueryData('yes')->reply();
 
         $this->assertNull($profile->fresh());
@@ -183,7 +201,7 @@ class WireguardTest extends TestCase
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (direct from settings menu)
         $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
-        $bot->hearCallbackQueryData('x@')->reply(); // "🧩 تنظیم آیدی هسته" (2nd x-prefixed button)
+        $bot->hearCallbackQueryData('x@@')->reply(); // "🧩 تنظیم آیدی هسته" (3rd x-prefixed button, after country)
         $bot->hearText('268')->reply();
 
         $this->assertSame(268, $profile->fresh()->core_id);
@@ -200,7 +218,7 @@ class WireguardTest extends TestCase
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (direct from settings menu)
         $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
-        $bot->hearCallbackQueryData('x@')->reply(); // "🧩 تنظیم آیدی هسته"
+        $bot->hearCallbackQueryData('x@@')->reply(); // "🧩 تنظیم آیدی هسته" (3rd x-prefixed button, after country)
         $bot->hearText('not-a-number')->reply();
 
         $this->assertNull($profile->fresh()->core_id);
@@ -217,9 +235,43 @@ class WireguardTest extends TestCase
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (direct from settings menu)
         $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
-        $bot->hearCallbackQueryData('x@')->reply(); // "🧩 تنظیم آیدی هسته"
+        $bot->hearCallbackQueryData('x@@')->reply(); // "🧩 تنظیم آیدی هسته" (3rd x-prefixed button, after country)
         $bot->hearText('0')->reply();
 
         $this->assertNull($profile->fresh()->core_id);
+    }
+
+    public function test_set_country_updates_the_profile(): void
+    {
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-key']);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (direct from settings menu)
+        $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
+        $bot->hearCallbackQueryData('x@')->reply(); // "🌍 تنظیم کشور" (2nd x-prefixed button)
+        $bot->hearText('Germany')->reply();
+
+        $this->assertSame('Germany', $profile->fresh()->country);
+    }
+
+    public function test_sending_dash_clears_the_profiles_country(): void
+    {
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-key', 'country' => 'Germany']);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (direct from settings menu)
+        $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
+        $bot->hearCallbackQueryData('x@')->reply(); // "🌍 تنظیم کشور"
+        $bot->hearText('-')->reply();
+
+        $this->assertNull($profile->fresh()->country);
     }
 }

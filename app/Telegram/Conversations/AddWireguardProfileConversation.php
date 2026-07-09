@@ -22,6 +22,7 @@ class AddWireguardProfileConversation extends Conversation
     protected const NAME_PATTERN = '/^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$/';
 
     protected ?string $name = null;
+    protected ?string $country = null;
 
     public function start(Nutgram $bot): void
     {
@@ -53,6 +54,25 @@ class AddWireguardProfileConversation extends Conversation
         }
 
         $this->name = $name;
+        $bot->sendMessage(
+            "نام کشور این پروفایل را بفرستید (فقط برای تشخیص خودتان در ربات، مثلاً: آلبانی).\n".
+            'برای رد شدن، - بفرستید:',
+            reply_markup: $this->backButton()
+        );
+        $this->next('receiveCountry');
+    }
+
+    public function receiveCountry(Nutgram $bot): void
+    {
+        if ($this->backTapped($bot)) {
+            $this->end();
+            WireguardProfileMenu::begin($bot);
+            return;
+        }
+
+        $country = trim((string) $bot->message()?->text);
+
+        $this->country = ($country === '' || $country === '-') ? null : $country;
         $bot->sendMessage('PrivateKey این پروفایل را بفرستید:', reply_markup: $this->backButton());
         $this->next('receivePrivateKey');
     }
@@ -74,6 +94,7 @@ class AddWireguardProfileConversation extends Conversation
 
         $profile = WireguardProfile::create([
             'name' => $this->name,
+            'country' => $this->country,
             'private_key' => $key,
         ]);
 
