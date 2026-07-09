@@ -49,7 +49,7 @@ class WireguardMenu extends InlineMenu
         ));
 
         $this->addButtonGrid($locations->map(fn (WireguardLocation $location) => InlineKeyboardButton::make(
-            "🔒 {$location->name}",
+            $location->country ? "🔒 {$location->name} ({$location->country})" : "🔒 {$location->name}",
             callback_data: "{$location->id}@showLocation"
         ))->all());
 
@@ -82,19 +82,37 @@ class WireguardMenu extends InlineMenu
 
         $this->currentLocationId = $location->id;
 
+        $countryLine = $location->country
+            ? "کشور: `{$location->country}`\n"
+            : "کشور تنظیم نشده.\n";
+
+        $intro = "🌍 تنظیم کشور — تنظیم نام کشور (فقط برای تشخیص خودتان)\n".
+            "🗑 حذف لوکیشن — حذف این لوکیشن\n".
+            "🔙 بازگشت — بازگشت به لیست لوکیشن‌ها\n\n";
+
         $this->clearButtons();
         $this->menuText(
             $this->rtl(
+                $intro.
                 ($justCreated ? "✅ لوکیشن «{$location->name}» ذخیره شد.\n\n" : '').
                 "نام: `{$location->name}`\n".
+                $countryLine.
                 "آی‌پی: `{$location->ip}`\n".
                 "PublicKey سرور: `{$location->server_public_key}`"
             ),
             ['parse_mode' => 'Markdown']
         );
+        $this->addButtonRow(InlineKeyboardButton::make('🌍 تنظیم کشور', callback_data: 'x@setCountry'));
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف لوکیشن', callback_data: 'x@confirmDeleteLocation'));
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToList'));
         $this->showMenu();
+    }
+
+    public function setCountry(Nutgram $bot): void
+    {
+        $this->closeMenu();
+        $this->end();
+        SetWireguardLocationCountryConversation::begin($bot, $bot->userId(), $bot->chatId(), [$this->currentLocationId]);
     }
 
     public function backToList(Nutgram $bot): void

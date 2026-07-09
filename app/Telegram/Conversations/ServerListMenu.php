@@ -486,7 +486,7 @@ class ServerListMenu extends InlineMenu
     {
         foreach (WireguardProfile::orderBy('name')->get() as $profile) {
             $this->addButtonRow(InlineKeyboardButton::make(
-                $profile->country ? "🪪 {$profile->name} ({$profile->country})" : "🪪 {$profile->name}",
+                "🪪 {$profile->name}",
                 callback_data: "{$profile->id}@{$callback}"
             ));
         }
