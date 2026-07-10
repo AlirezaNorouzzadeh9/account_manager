@@ -4,8 +4,9 @@ namespace App\Jobs;
 
 use App\Models\Panel;
 use App\Models\ServerSecret;
+use App\Models\WireguardProfile;
 use App\Services\Pasarguard\PasarguardNodeInstaller;
-use App\Services\Pasarguard\PasarguardNodeReconnector;
+use App\Services\Pasarguard\PasarguardPanelClient;
 use App\Services\Providers\ProviderManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -63,8 +64,10 @@ class InstallPasarguardNodeJob implements ShouldQueue
             return;
         }
 
+        $profile = $secret->wireguardProfile;
+
         try {
-            $result = $installer->install($ip, 'root', $secret->root_password, $secret->wireguardProfile?->private_key, $secret->wireguardProfile?->name);
+            $result = $installer->install($ip, 'root', $secret->root_password, $profile?->private_key, $profile?->name);
         } catch (RuntimeException $e) {
             if ($this->attempts() < $this->tries) {
                 $this->release(15);
@@ -103,21 +106,67 @@ class InstallPasarguardNodeJob implements ShouldQueue
             $message .= "\n\n⚠️ {$result['dns_warning']}";
         }
 
-        if (! empty($result['cert'])) {
+        if ($result['success'] && $profile && ! empty($result['cert'])) {
+            // The DNS-backed domain (if any) is the address the PANEL should
+            // actually connect through — it stays stable across a future
+            // "🔄 تغییر سرور", the raw IP wouldn't.
+            $address = $result['domain'] ?? $ip;
+            $message .= "\n\n".$this->registerNode($profile, $address, $result['cert']);
+        } elseif (! empty($result['cert'])) {
             $message .= "\n\nگواهی SSL این نود (برای ثبت در پنل PasarGuard):\n{$result['cert']}";
         }
 
         $bot->sendMessage($message, chat_id: $this->chatId);
+    }
 
-        // Sent separately (and only this part gets Markdown) so a stray
-        // '_'/'*' inside the raw log or cert above can never break parsing.
-        if (! empty($result['domain'])) {
-            $bot->sendMessage(
-                "🌐 برای ثبت در پنل PasarGuard، به‌جای آی‌پی از این آدرس استفاده کنید:\n`{$result['domain']}`\n\n".
-                app(PasarguardNodeReconnector::class)->reminder($result['domain'], $secret->wireguardProfile),
-                chat_id: $this->chatId,
-                parse_mode: 'Markdown',
-            );
+    /**
+     * Auto-registers a fresh PasarGuard panel node for this profile (every
+     * install replaces whatever node the profile pointed at before — this
+     * bot tracks exactly one live node per profile, not several), falling
+     * back to printing the cert for manual registration when the panel
+     * isn't configured or the API call fails.
+     */
+    protected function registerNode(WireguardProfile $profile, string $address, string $cert): string
+    {
+        if (! filled(config('pasarguard.panel.url')) || ! filled(config('pasarguard.panel.username')) || ! filled(config('pasarguard.panel.password'))) {
+            return "⚠️ اطلاعات پنل PasarGuard تنظیم نشده؛ نود را دستی با این گواهی در پنل ثبت کنید:\n{$cert}";
+        }
+
+        $client = new PasarguardPanelClient(
+            config('pasarguard.panel.url'),
+            config('pasarguard.panel.username'),
+            config('pasarguard.panel.password'),
+        );
+
+        $coreConfigId = 1;
+
+        if ($profile->core_id) {
+            try {
+                $oldNode = $client->getNode($profile->core_id);
+                $coreConfigId = (int) ($oldNode['core_config_id'] ?? 1);
+            } catch (Throwable) {
+                // best-effort continuity only — the default core config id is fine
+            }
+        }
+
+        try {
+            $newNodeId = $client->createNode([
+                'name' => "{$profile->name} ({$address})",
+                'address' => $address,
+                'port' => PasarguardNodeInstaller::NODE_PORT,
+                'api_port' => PasarguardNodeInstaller::NODE_API_PORT,
+                'connection_type' => 'grpc',
+                'server_ca' => $cert,
+                'keep_alive' => 60,
+                'core_config_id' => $coreConfigId,
+                'api_key' => config('pasarguard.api_key'),
+            ]);
+
+            $profile->update(['core_id' => $newNodeId]);
+
+            return "✅ نود جدید (id={$newNodeId}) در پنل PasarGuard ثبت شد.";
+        } catch (Throwable $e) {
+            return "⚠️ ثبت خودکار نود در پنل ناموفق بود ({$e->getMessage()})؛ دستی با این گواهی ثبت کنید:\n{$cert}";
         }
     }
 

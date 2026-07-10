@@ -7,6 +7,7 @@ use App\Jobs\UpdateWireguardsJob;
 use App\Models\Panel;
 use App\Models\ServerSecret;
 use App\Models\WireguardLocation;
+use App\Models\WireguardProfile;
 use App\Services\Pasarguard\PasarguardNodeInstaller;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -144,6 +145,129 @@ class PasarguardNodeTest extends TestCase
         $body = json_decode((string) $request->getBody(), true);
 
         $this->assertStringContainsString('رمز روت این سرور ذخیره نشده', $body['text']);
+    }
+
+    public function test_install_node_registers_a_new_panel_node_when_panel_is_configured(): void
+    {
+        config([
+            'pasarguard.panel.url' => 'https://panel.test',
+            'pasarguard.panel.username' => 'bots',
+            'pasarguard.panel.password' => 'secret',
+            'pasarguard.api_key' => 'fixed-api-key',
+        ]);
+
+        $panel = Panel::create([
+            'name' => 'My DO Panel',
+            'provider' => 'digitalocean',
+            'api_token' => 'fake-token',
+            'meta' => [],
+            'is_active' => true,
+        ]);
+
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-private-key']);
+
+        ServerSecret::create([
+            'panel_id' => $panel->id,
+            'provider_server_id' => 61,
+            'root_password' => 'already-known-password',
+            'wireguard_profile_id' => $profile->id,
+        ]);
+
+        $droplet = [
+            'id' => 61,
+            'name' => 'srv-4',
+            'networks' => ['v4' => [['ip_address' => '8.8.8.8', 'type' => 'public']]],
+        ];
+
+        Http::fake([
+            'api.digitalocean.com/v2/droplets/61' => Http::response(['droplet' => $droplet]),
+            'panel.test/api/admin/token' => Http::response(['access_token' => 'tok', 'token_type' => 'bearer']),
+            'panel.test/api/node' => Http::response(['id' => 777]),
+        ]);
+
+        $installer = \Mockery::mock(PasarguardNodeInstaller::class);
+        $installer->shouldReceive('install')
+            ->once()
+            ->with('8.8.8.8', 'root', 'already-known-password', 'fake-private-key', 'germany')
+            ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => 'fake-cert-pem', 'domain' => null, 'dns_warning' => null]);
+
+        config(['bot.admins' => ['555']]);
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        $job = new InstallPasarguardNodeJob($panel->id, 61, $bot->chatId() ?? 1);
+        $job->handle($bot, $installer);
+
+        $this->assertSame(777, $profile->fresh()->core_id);
+
+        Http::assertSent(fn ($request) => str_contains((string) $request->url(), '/api/node')
+            && $request->method() === 'POST'
+            && ($request['address'] ?? null) === '8.8.8.8'
+            && ($request['server_ca'] ?? null) === 'fake-cert-pem'
+            && ($request['api_key'] ?? null) === 'fixed-api-key');
+
+        $history = $bot->getRequestHistory();
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+
+        $this->assertStringContainsString('نود جدید (id=777) در پنل PasarGuard ثبت شد', $body['text']);
+    }
+
+    public function test_install_node_falls_back_to_a_manual_message_when_panel_is_not_configured(): void
+    {
+        config([
+            'pasarguard.panel.url' => null,
+            'pasarguard.panel.username' => null,
+            'pasarguard.panel.password' => null,
+        ]);
+
+        $panel = Panel::create([
+            'name' => 'My DO Panel',
+            'provider' => 'digitalocean',
+            'api_token' => 'fake-token',
+            'meta' => [],
+            'is_active' => true,
+        ]);
+
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-private-key']);
+
+        ServerSecret::create([
+            'panel_id' => $panel->id,
+            'provider_server_id' => 62,
+            'root_password' => 'already-known-password',
+            'wireguard_profile_id' => $profile->id,
+        ]);
+
+        $droplet = [
+            'id' => 62,
+            'name' => 'srv-5',
+            'networks' => ['v4' => [['ip_address' => '8.8.4.4', 'type' => 'public']]],
+        ];
+
+        Http::fake([
+            'api.digitalocean.com/v2/droplets/62' => Http::response(['droplet' => $droplet]),
+        ]);
+
+        $installer = \Mockery::mock(PasarguardNodeInstaller::class);
+        $installer->shouldReceive('install')
+            ->once()
+            ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => 'fake-cert-pem', 'domain' => null, 'dns_warning' => null]);
+
+        config(['bot.admins' => ['555']]);
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        $job = new InstallPasarguardNodeJob($panel->id, 62, $bot->chatId() ?? 1);
+        $job->handle($bot, $installer);
+
+        $this->assertNull($profile->fresh()->core_id);
+
+        $history = $bot->getRequestHistory();
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+
+        $this->assertStringContainsString('اطلاعات پنل PasarGuard تنظیم نشده', $body['text']);
+        $this->assertStringContainsString('fake-cert-pem', $body['text']);
     }
 
     public function test_installer_env_file_and_compose_content(): void
