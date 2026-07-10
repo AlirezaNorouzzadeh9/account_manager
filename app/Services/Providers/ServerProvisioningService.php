@@ -20,7 +20,7 @@ class ServerProvisioningService
         $credentials = "👤 کاربر: `root`\n🔑 رمز عبور: `{$password}`";
 
         if ($actionId) {
-            CreateServerReadyJob::dispatch($panel->id, $actionId, $chatId, $hostname, $credentials);
+            CreateServerReadyJob::dispatch($panel->id, $actionId, $chatId, $hostname, $credentials, $region, $size, $image, 1);
         }
     }
 

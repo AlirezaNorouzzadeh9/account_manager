@@ -225,7 +225,21 @@ class LinodeClient implements ProviderClient
             $payload['root_pass'] = $data['root_password'];
         }
 
-        $instance = $this->handle($this->http()->post('/linode/instances', $payload));
+        try {
+            $instance = $this->handle($this->http()->post('/linode/instances', $payload));
+        } catch (ProviderException $e) {
+            // Unlike DigitalOcean, Linode enforces unique labels account-wide
+            // — this hits whenever a server is replaced/recreated under the
+            // same hostname while the original (same label) is still up.
+            // Retry once with a short random suffix instead of failing the
+            // whole create/replace flow over a naming collision.
+            if (! str_contains($e->getMessage(), 'unique')) {
+                throw $e;
+            }
+
+            $payload['label'] = substr($payload['label'], 0, 58).'-'.Str::random(4);
+            $instance = $this->handle($this->http()->post('/linode/instances', $payload));
+        }
 
         return [
             'droplet' => $this->normalizeInstance($instance),
@@ -233,16 +247,38 @@ class LinodeClient implements ProviderClient
         ];
     }
 
+    /**
+     * Linode requires page_size to be 25-500 — below the 8-per-screen this
+     * bot's UI actually wants — so this fetches every instance at a valid
+     * page_size and paginates client-side to keep the same page/perPage
+     * contract the other providers use.
+     */
+    protected function fetchAllInstances(): array
+    {
+        $items = [];
+        $page = 1;
+
+        do {
+            $body = $this->handle($this->http()->get('/linode/instances', [
+                'page' => $page,
+                'page_size' => 100,
+            ]));
+            $items = array_merge($items, $body['data'] ?? []);
+            $hasMore = $page < ($body['pages'] ?? 1);
+            $page++;
+        } while ($hasMore);
+
+        return $items;
+    }
+
     public function listServers(int $page = 1, int $perPage = 20): array
     {
-        $body = $this->handle($this->http()->get('/linode/instances', [
-            'page' => $page,
-            'page_size' => $perPage,
-        ]));
+        $all = $this->fetchAllInstances();
+        $offset = ($page - 1) * $perPage;
 
         return [
-            'items' => array_map(fn (array $i) => $this->normalizeInstance($i), $body['data'] ?? []),
-            'has_more' => ($body['page'] ?? 1) < ($body['pages'] ?? 1),
+            'items' => array_map(fn (array $i) => $this->normalizeInstance($i), array_slice($all, $offset, $perPage)),
+            'has_more' => count($all) > $offset + $perPage,
         ];
     }
 

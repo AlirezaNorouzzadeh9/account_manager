@@ -148,4 +148,129 @@ class CheckHostTest extends TestCase
         $this->assertStringContainsString('Iran, Tehran', $body['text']);
         $this->assertStringContainsString('view_server:5:99', json_encode($body['reply_markup']));
     }
+
+    public function test_final_report_job_deletes_and_rebuilds_when_ping_is_not_clean(): void
+    {
+        Queue::fake();
+
+        $panel = Panel::create([
+            'name' => 'My DO Panel',
+            'provider' => 'digitalocean',
+            'api_token' => 'fake-token',
+            'meta' => [],
+            'is_active' => true,
+        ]);
+
+        Http::fake([
+            'check-host.net/check-result/*' => Http::response([
+                'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+            ]),
+            'api.digitalocean.com/v2/droplets/99' => Http::response([], 204),
+            'api.digitalocean.com/v2/droplets' => Http::response([
+                'droplet' => ['id' => 100, 'name' => 'my-server-1'],
+                'links' => ['actions' => [['id' => 555, 'rel' => 'create', 'href' => '']]],
+            ]),
+        ]);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        $job = new CreateServerFinalReportJob(
+            'fake-request-id',
+            '9.9.9.9',
+            'my-server-1',
+            "user: root\npass: xyz",
+            $bot->chatId() ?? 1,
+            $panel->id,
+            99,
+            'nyc1',
+            's-1vcpu-1gb',
+            'ubuntu-24-04-x64',
+            1,
+        );
+        $job->handle($bot, new CheckHostClient());
+
+        Http::assertSent(fn ($request) => str_contains((string) $request->url(), '/droplets/99')
+            && $request->method() === 'DELETE');
+
+        Queue::assertPushed(CreateServerReadyJob::class);
+
+        // Still retrying — no Telegram message sent yet, that only happens
+        // once a clean ping is found or attempts are exhausted.
+        $this->assertEmpty($bot->getRequestHistory());
+    }
+
+    public function test_final_report_job_sends_immediately_and_omits_recreate_button_when_ping_is_clean(): void
+    {
+        Http::fake([
+            'check-host.net/check-result/*' => Http::response([
+                'ir5.node.check-host.net' => [[['OK', 0.08]]],
+                'ir9.node.check-host.net' => [[['OK', 0.09]]],
+            ]),
+        ]);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        $job = new CreateServerFinalReportJob(
+            'fake-request-id',
+            '9.9.9.9',
+            'my-server-1',
+            "user: root\npass: xyz",
+            $bot->chatId() ?? 1,
+            5,
+            99,
+            'nyc1',
+            's-1vcpu-1gb',
+            'ubuntu-24-04-x64',
+            1,
+        );
+        $job->handle($bot, new CheckHostClient());
+
+        $history = $bot->getRequestHistory();
+        $this->assertCount(1, $history);
+
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+        $markup = json_encode($body['reply_markup']);
+
+        $this->assertStringContainsString('view_server:5:99', $markup);
+        $this->assertStringNotContainsString('recreate_server', $markup);
+    }
+
+    public function test_final_report_job_gives_up_and_offers_manual_recreate_after_max_attempts(): void
+    {
+        Http::fake([
+            'check-host.net/check-result/*' => Http::response([
+                'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+            ]),
+        ]);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        $job = new CreateServerFinalReportJob(
+            'fake-request-id',
+            '9.9.9.9',
+            'my-server-1',
+            "user: root\npass: xyz",
+            $bot->chatId() ?? 1,
+            5,
+            99,
+            'nyc1',
+            's-1vcpu-1gb',
+            'ubuntu-24-04-x64',
+            3,
+        );
+        $job->handle($bot, new CheckHostClient());
+
+        $history = $bot->getRequestHistory();
+        $this->assertCount(1, $history);
+
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+
+        $this->assertStringContainsString('بعد از 3 تلاش', $body['text']);
+        $this->assertStringContainsString('recreate_server:5:99', json_encode($body['reply_markup']));
+    }
 }

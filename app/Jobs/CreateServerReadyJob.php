@@ -31,6 +31,10 @@ class CreateServerReadyJob implements ShouldQueue
         protected int $chatId,
         protected string $hostname,
         protected string $credentials,
+        protected ?string $region = null,
+        protected ?string $size = null,
+        protected ?string $image = null,
+        protected int $attempt = 1,
     ) {
     }
 
@@ -85,6 +89,10 @@ class CreateServerReadyJob implements ShouldQueue
                     $this->chatId,
                     $this->panelId,
                     $serverId,
+                    $this->region,
+                    $this->size,
+                    $this->image,
+                    $this->attempt,
                 );
 
                 return;

@@ -161,25 +161,119 @@ class LinodeClientTest extends TestCase
         $this->assertSame(999, $result['links']['actions'][0]['id']);
     }
 
-    public function test_list_servers_normalizes_items_and_computes_has_more_from_pages(): void
+    public function test_create_server_retries_with_a_suffixed_label_on_a_uniqueness_conflict(): void
+    {
+        Http::fake([
+            'api.linode.com/v4/linode/instances' => Http::sequence()
+                ->push(['errors' => [['field' => 'label', 'reason' => 'Label must be unique among your linodes.']]], 400)
+                ->push([
+                    'id' => 999,
+                    'label' => 'my-server-1-ab12',
+                    'status' => 'provisioning',
+                    'ipv4' => ['203.0.113.10'],
+                    'region' => 'us-east',
+                    'type' => 'g6-standard-2',
+                    'image' => 'linode/debian12',
+                ], 200),
+        ]);
+
+        $result = $this->client()->createServer([
+            'name' => 'my-server-1',
+            'region' => 'us-east',
+            'size' => 'g6-standard-2',
+            'image' => 'linode/debian12',
+        ]);
+
+        $this->assertSame(999, $result['droplet']['id']);
+
+        $labels = [];
+        Http::assertSent(function ($request) use (&$labels) {
+            $labels[] = $request['label'] ?? null;
+
+            return true;
+        });
+
+        $this->assertCount(2, $labels);
+        $this->assertSame('my-server-1', $labels[0]);
+        $this->assertNotSame('my-server-1', $labels[1]);
+        $this->assertStringStartsWith('my-server-1-', $labels[1]);
+    }
+
+    public function test_create_server_does_not_retry_on_a_non_uniqueness_error(): void
+    {
+        Http::fake([
+            'api.linode.com/v4/linode/instances' => Http::response([
+                'errors' => [['field' => 'region', 'reason' => 'Region is invalid.']],
+            ], 400),
+        ]);
+
+        $this->expectException(ProviderException::class);
+        $this->expectExceptionMessage('Region is invalid.');
+
+        $this->client()->createServer([
+            'name' => 'my-server-1',
+            'region' => 'nowhere',
+            'size' => 'g6-standard-2',
+            'image' => 'linode/debian12',
+        ]);
+    }
+
+    public function test_list_servers_requests_a_valid_page_size_and_follows_linode_pages(): void
+    {
+        // Linode requires page_size to be 25-500 — well above the 8-per-
+        // screen this bot's UI wants — so listServers() must always request
+        // a valid size itself and follow every Linode page it reports.
+        Http::fake([
+            'api.linode.com/v4/linode/instances*' => Http::sequence()
+                ->push([
+                    'data' => [
+                        ['id' => 1, 'label' => 'srv-1', 'status' => 'running', 'ipv4' => ['203.0.113.1'], 'region' => 'us-east', 'type' => 'g6-standard-2', 'image' => 'linode/debian12'],
+                    ],
+                    'page' => 1,
+                    'pages' => 2,
+                ])
+                ->push([
+                    'data' => [
+                        ['id' => 2, 'label' => 'srv-2', 'status' => 'offline', 'ipv4' => ['203.0.113.2'], 'region' => 'us-east', 'type' => 'g6-standard-2', 'image' => 'linode/debian12'],
+                    ],
+                    'page' => 2,
+                    'pages' => 2,
+                ]),
+        ]);
+
+        $result = $this->client()->listServers(1, 8);
+
+        $this->assertCount(2, $result['items']);
+        $this->assertSame('srv-1', $result['items'][0]['name']);
+        $this->assertSame('active', $result['items'][0]['status']);
+        $this->assertSame('srv-2', $result['items'][1]['name']);
+        $this->assertSame('off', $result['items'][1]['status']);
+        $this->assertFalse($result['has_more']);
+
+        Http::assertSent(fn ($request) => ($request['page_size'] ?? null) >= 25);
+    }
+
+    public function test_list_servers_paginates_client_side_by_page_and_per_page(): void
     {
         Http::fake([
             'api.linode.com/v4/linode/instances*' => Http::response([
                 'data' => [
                     ['id' => 1, 'label' => 'srv-1', 'status' => 'running', 'ipv4' => ['203.0.113.1'], 'region' => 'us-east', 'type' => 'g6-standard-2', 'image' => 'linode/debian12'],
+                    ['id' => 2, 'label' => 'srv-2', 'status' => 'running', 'ipv4' => ['203.0.113.2'], 'region' => 'us-east', 'type' => 'g6-standard-2', 'image' => 'linode/debian12'],
+                    ['id' => 3, 'label' => 'srv-3', 'status' => 'running', 'ipv4' => ['203.0.113.3'], 'region' => 'us-east', 'type' => 'g6-standard-2', 'image' => 'linode/debian12'],
                 ],
                 'page' => 1,
-                'pages' => 2,
-                'results' => 15,
+                'pages' => 1,
             ]),
         ]);
 
-        $result = $this->client()->listServers(1, 8);
+        $first = $this->client()->listServers(1, 2);
+        $this->assertSame(['srv-1', 'srv-2'], array_column($first['items'], 'name'));
+        $this->assertTrue($first['has_more']);
 
-        $this->assertCount(1, $result['items']);
-        $this->assertSame('srv-1', $result['items'][0]['name']);
-        $this->assertSame('active', $result['items'][0]['status']);
-        $this->assertTrue($result['has_more']);
+        $second = $this->client()->listServers(2, 2);
+        $this->assertSame(['srv-3'], array_column($second['items'], 'name'));
+        $this->assertFalse($second['has_more']);
     }
 
     public function test_get_action_reports_in_progress_while_transitional_and_completed_once_stable(): void
