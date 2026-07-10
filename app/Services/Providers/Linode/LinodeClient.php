@@ -123,9 +123,15 @@ class LinodeClient implements ProviderClient
         // region_prices) — every type is offered everywhere that matters here.
         $types = $this->handle($this->http()->get('/linode/types'))['data'] ?? [];
 
-        // GPU/dedicated-premium classes have their own confusing pricing
-        // tiers not worth surfacing in this bot's plan picker.
-        $types = array_values(array_filter($types, fn (array $t) => ($t['class'] ?? '') !== 'gpu'));
+        // GPU plans have their own confusing pricing tiers not worth
+        // surfacing in this bot's plan picker; some newer classes (e.g. the
+        // g8-dedicated-* line) come back with no price at all yet — Linode
+        // hasn't priced them for direct API purchase — which would
+        // otherwise show up as a bogus "$0" plan.
+        $types = array_values(array_filter(
+            $types,
+            fn (array $t) => ($t['class'] ?? '') !== 'gpu' && ($t['price']['monthly'] ?? null) !== null
+        ));
 
         return array_map(fn (array $t) => [
             'slug' => $t['id'],
@@ -133,7 +139,25 @@ class LinodeClient implements ProviderClient
             'memory' => $t['memory'],
             'disk' => (int) round(($t['disk'] ?? 0) / 1024),
             'price_monthly' => $t['price']['monthly'] ?? 0,
+            // Same vcpu/RAM combo often recurs across classes at different
+            // prices (e.g. 2 vCPU/4GB is offered as Shared, Dedicated, AND
+            // Premium) — the class name is what actually disambiguates them.
+            'label_suffix' => ' ('.self::planClassLabel($t['class'] ?? '').')',
         ], $types);
+    }
+
+    protected const PLAN_CLASS_LABELS = [
+        'nanode' => 'Nanode',
+        'standard' => 'Shared',
+        'dedicated' => 'Dedicated',
+        'highmem' => 'High Memory',
+        'premium' => 'Premium',
+        'accelerated' => 'Accelerated',
+    ];
+
+    protected static function planClassLabel(string $class): string
+    {
+        return self::PLAN_CLASS_LABELS[$class] ?? ucfirst($class ?: 'Unknown');
     }
 
     public function images(string $type = 'distribution'): array
