@@ -103,6 +103,23 @@ class LinodeClientTest extends TestCase
         $this->assertSame('private/12345', $private[0]['slug']);
     }
 
+    public function test_images_excludes_kubernetes_cluster_node_images(): void
+    {
+        Http::fake([
+            'api.linode.com/v4/images' => Http::response([
+                'data' => [
+                    ['id' => 'linode/debian12', 'label' => 'Debian 12'],
+                    ['id' => 'linode/kubernetes1.30', 'label' => 'Kubernetes 1.30.3 on Debian 12'],
+                ],
+            ]),
+        ]);
+
+        $distros = $this->client()->images('distribution');
+
+        $this->assertCount(1, $distros);
+        $this->assertSame('linode/debian12', $distros[0]['slug']);
+    }
+
     public function test_create_server_sends_the_linode_shaped_payload_and_normalizes_the_response(): void
     {
         Http::fake([

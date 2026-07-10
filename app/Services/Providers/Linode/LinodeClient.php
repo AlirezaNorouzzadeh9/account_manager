@@ -147,6 +147,15 @@ class LinodeClient implements ProviderClient
             fn (array $img) => str_starts_with($img['id'] ?? '', 'linode/') === ($type === 'distribution')
         ));
 
+        // Linode's "distribution" images also include LKE's per-Kubernetes-
+        // version cluster node images ("Kubernetes 1.30.3 on Debian ...") —
+        // not a real standalone OS choice, just clutter for this bot's
+        // plain-server rebuild/create pickers.
+        $images = array_values(array_filter(
+            $images,
+            fn (array $img) => ! str_starts_with($img['label'] ?? '', 'Kubernetes')
+        ));
+
         return array_map(fn (array $img) => [
             'slug' => $img['id'],
             'label' => $img['label'] ?? $img['id'],
