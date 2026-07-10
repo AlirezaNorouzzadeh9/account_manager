@@ -29,6 +29,9 @@ class CheckHostTest extends TestCase
             'ir9.node.check-host.net' => [[
                 ['TIMEOUT', 3.0],
             ]],
+            'ir6.node.check-host.net' => [[
+                ['OK', 0.112],
+            ]],
         ];
 
         $formatted = $client->formatResult($result);
@@ -41,6 +44,8 @@ class CheckHostTest extends TestCase
         $this->assertStringContainsString('خنج', $formatted);
         $this->assertStringContainsString('0/1', $formatted);
         $this->assertStringContainsString('no response', $formatted);
+        $this->assertStringContainsString('Iran, Qom', $formatted);
+        $this->assertStringContainsString('قم', $formatted);
     }
 
     public function test_check_host_client_request_ping_returns_request_id(): void
@@ -62,7 +67,7 @@ class CheckHostTest extends TestCase
         Http::assertSent(function ($request) {
             return str_contains((string) $request->url(), 'check-ping')
                 && str_contains((string) $request->url(), 'host=1.2.3.4')
-                && substr_count((string) $request->url(), 'node=ir') === 5;
+                && substr_count((string) $request->url(), 'node=ir') === 8;
         });
     }
 

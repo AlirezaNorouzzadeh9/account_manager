@@ -17,7 +17,10 @@ class CheckHostClient
     /** node hostname => [English city, Persian city] */
     protected const IRAN_NODES = [
         'ir2.node.check-host.net' => ['Isfahan', 'اصفهان'],
+        'ir3.node.check-host.net' => ['Shiraz', 'شیراز'],
+        'ir4.node.check-host.net' => ['Shiraz', 'شیراز'],
         'ir5.node.check-host.net' => ['Tehran', 'تهران'],
+        'ir6.node.check-host.net' => ['Qom', 'قم'],
         'ir7.node.check-host.net' => ['Tehran', 'تهران'],
         'ir8.node.check-host.net' => ['Tehran', 'تهران'],
         'ir9.node.check-host.net' => ['Khonj', 'خنج'],
