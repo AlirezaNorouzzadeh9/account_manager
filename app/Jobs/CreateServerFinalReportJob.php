@@ -30,7 +30,7 @@ class CreateServerFinalReportJob implements ShouldQueue
 
     public int $tries = 20;
 
-    protected const MAX_ATTEMPTS = 3;
+    protected const MAX_ATTEMPTS = 10;
 
     public function __construct(
         protected string $requestId,

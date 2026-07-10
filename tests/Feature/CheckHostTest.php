@@ -260,7 +260,7 @@ class CheckHostTest extends TestCase
             'nyc1',
             's-1vcpu-1gb',
             'ubuntu-24-04-x64',
-            3,
+            10,
         );
         $job->handle($bot, new CheckHostClient());
 
@@ -270,7 +270,7 @@ class CheckHostTest extends TestCase
         [$request] = array_values(end($history));
         $body = json_decode((string) $request->getBody(), true);
 
-        $this->assertStringContainsString('بعد از 3 تلاش', $body['text']);
+        $this->assertStringContainsString('بعد از 10 تلاش', $body['text']);
         $this->assertStringContainsString('recreate_server:5:99', json_encode($body['reply_markup']));
     }
 }
