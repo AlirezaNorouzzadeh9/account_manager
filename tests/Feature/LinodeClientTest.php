@@ -61,17 +61,21 @@ class LinodeClientTest extends TestCase
         $this->assertStringContainsString('🇫🇷', $paris['label']);
     }
 
-    public function test_sizes_normalizes_fields_excludes_gpu_and_unpriced_types_and_labels_the_class(): void
+    public function test_sizes_only_returns_shared_cpu_plans_and_labels_the_class(): void
     {
         Http::fake([
             'api.linode.com/v4/linode/types' => Http::response([
                 'data' => [
+                    ['id' => 'g6-nanode-1', 'class' => 'nanode', 'vcpus' => 1, 'memory' => 1024, 'disk' => 25600, 'price' => ['monthly' => 5, 'hourly' => 0.0075]],
                     ['id' => 'g6-standard-2', 'class' => 'standard', 'vcpus' => 2, 'memory' => 4096, 'disk' => 81920, 'price' => ['monthly' => 24, 'hourly' => 0.036]],
                     ['id' => 'g6-dedicated-2', 'class' => 'dedicated', 'vcpus' => 2, 'memory' => 4096, 'disk' => 81920, 'price' => ['monthly' => 36, 'hourly' => 0.054]],
+                    ['id' => 'g7-premium-2', 'class' => 'premium', 'vcpus' => 2, 'memory' => 4096, 'disk' => 81920, 'price' => ['monthly' => 43, 'hourly' => 0.064]],
+                    ['id' => 'g7-highmem-1', 'class' => 'highmem', 'vcpus' => 2, 'memory' => 24576, 'disk' => 20480, 'price' => ['monthly' => 60, 'hourly' => 0.09]],
                     ['id' => 'g1-gpu-rtx6000-1', 'class' => 'gpu', 'vcpus' => 8, 'memory' => 32768, 'disk' => 819200, 'price' => ['monthly' => 1000, 'hourly' => 1.5]],
                     // Newer plan lines (e.g. g8-dedicated-*) can come back
                     // with no price at all yet — must be excluded, not
-                    // shown as a bogus "$0" plan.
+                    // shown as a bogus "$0" plan (moot here since it's also
+                    // not a shared-CPU class, but worth covering directly).
                     ['id' => 'g8-dedicated-4-2', 'class' => 'dedicated', 'vcpus' => 2, 'memory' => 4096, 'disk' => 41984, 'price' => ['monthly' => null, 'hourly' => null]],
                 ],
             ]),
@@ -80,15 +84,16 @@ class LinodeClientTest extends TestCase
         $sizes = $this->client()->sizes();
 
         $this->assertCount(2, $sizes);
-        $this->assertSame('g6-standard-2', $sizes[0]['slug']);
-        $this->assertSame(2, $sizes[0]['vcpus']);
-        $this->assertSame(4096, $sizes[0]['memory']);
-        $this->assertSame(80, $sizes[0]['disk']);
-        $this->assertSame(24, $sizes[0]['price_monthly']);
-        $this->assertSame(' (Shared)', $sizes[0]['label_suffix']);
+        $this->assertSame('g6-nanode-1', $sizes[0]['slug']);
+        $this->assertSame(5, $sizes[0]['price_monthly']);
+        $this->assertSame(' (Nanode)', $sizes[0]['label_suffix']);
 
-        $this->assertSame('g6-dedicated-2', $sizes[1]['slug']);
-        $this->assertSame(' (Dedicated)', $sizes[1]['label_suffix']);
+        $this->assertSame('g6-standard-2', $sizes[1]['slug']);
+        $this->assertSame(2, $sizes[1]['vcpus']);
+        $this->assertSame(4096, $sizes[1]['memory']);
+        $this->assertSame(80, $sizes[1]['disk']);
+        $this->assertSame(24, $sizes[1]['price_monthly']);
+        $this->assertSame(' (Shared)', $sizes[1]['label_suffix']);
     }
 
     public function test_images_filters_by_distribution_vs_private(): void

@@ -123,14 +123,15 @@ class LinodeClient implements ProviderClient
         // region_prices) — every type is offered everywhere that matters here.
         $types = $this->handle($this->http()->get('/linode/types'))['data'] ?? [];
 
-        // GPU plans have their own confusing pricing tiers not worth
-        // surfacing in this bot's plan picker; some newer classes (e.g. the
-        // g8-dedicated-* line) come back with no price at all yet — Linode
-        // hasn't priced them for direct API purchase — which would
-        // otherwise show up as a bogus "$0" plan.
+        // Only Shared-CPU plans (Linode's own "nanode"/"standard" classes) —
+        // Dedicated/Premium/High Memory/GPU/Accelerated are overkill and
+        // much pricier for a plain VPN node. Some newer classes (e.g. the
+        // g8-dedicated-* line) also come back with no price at all yet —
+        // Linode hasn't priced them for direct API purchase — which would
+        // otherwise show up as a bogus "$0" plan; excluded regardless.
         $types = array_values(array_filter(
             $types,
-            fn (array $t) => ($t['class'] ?? '') !== 'gpu' && ($t['price']['monthly'] ?? null) !== null
+            fn (array $t) => in_array($t['class'] ?? '', ['nanode', 'standard'], true) && ($t['price']['monthly'] ?? null) !== null
         ));
 
         return array_map(fn (array $t) => [
