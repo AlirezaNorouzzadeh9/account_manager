@@ -33,20 +33,17 @@ class CheckHostTest extends TestCase
             'ir6.node.check-host.net' => [[
                 ['OK', 0.112],
             ]],
+            // No samples at all (not just failed ones) — must not render as "0/0".
+            'ir7.node.check-host.net' => [[]],
         ];
 
         $formatted = $client->formatResult($result);
 
-        $this->assertStringContainsString('Iran, Tehran', $formatted);
-        $this->assertStringContainsString('تهران', $formatted);
-        $this->assertStringContainsString('2/2', $formatted);
-        $this->assertStringContainsString('92ms', $formatted); // avg of 91/93 -> 92
-        $this->assertStringContainsString('Iran, Khonj', $formatted);
-        $this->assertStringContainsString('خنج', $formatted);
-        $this->assertStringContainsString('0/1', $formatted);
-        $this->assertStringContainsString('no response', $formatted);
+        $this->assertStringContainsString('Iran, Tehran 2/2 - 92ms', $formatted); // avg of 91/93 -> 92
+        $this->assertStringContainsString('Iran, Khonj 0/1 - no response', $formatted);
         $this->assertStringContainsString('Iran, Qom', $formatted);
-        $this->assertStringContainsString('قم', $formatted);
+        $this->assertStringContainsString('Iran, Tehran - no response', $formatted); // ir7: 0 samples, no ratio shown
+        $this->assertStringNotContainsString('0/0', $formatted);
     }
 
     public function test_check_host_client_request_ping_returns_request_id(): void

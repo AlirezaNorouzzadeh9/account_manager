@@ -14,16 +14,16 @@ class CheckHostClient
 {
     protected const BASE_URL = 'https://check-host.net';
 
-    /** node hostname => [English city, Persian city] */
+    /** node hostname => English city */
     protected const IRAN_NODES = [
-        'ir2.node.check-host.net' => ['Isfahan', 'اصفهان'],
-        'ir3.node.check-host.net' => ['Shiraz', 'شیراز'],
-        'ir4.node.check-host.net' => ['Shiraz', 'شیراز'],
-        'ir5.node.check-host.net' => ['Tehran', 'تهران'],
-        'ir6.node.check-host.net' => ['Qom', 'قم'],
-        'ir7.node.check-host.net' => ['Tehran', 'تهران'],
-        'ir8.node.check-host.net' => ['Tehran', 'تهران'],
-        'ir9.node.check-host.net' => ['Khonj', 'خنج'],
+        'ir2.node.check-host.net' => 'Isfahan',
+        'ir3.node.check-host.net' => 'Shiraz',
+        'ir4.node.check-host.net' => 'Shiraz',
+        'ir5.node.check-host.net' => 'Tehran',
+        'ir6.node.check-host.net' => 'Qom',
+        'ir7.node.check-host.net' => 'Tehran',
+        'ir8.node.check-host.net' => 'Tehran',
+        'ir9.node.check-host.net' => 'Khonj',
     ];
 
     /**
@@ -78,20 +78,24 @@ class CheckHostClient
         foreach ($data as $node => $pings) {
             $samples = $pings[0] ?? [];
             $ok = array_values(array_filter($samples, fn ($s) => ($s[0] ?? null) === 'OK'));
-            [$en, $fa] = self::IRAN_NODES[$node] ?? [$node, $node];
+            $city = self::IRAN_NODES[$node] ?? $node;
 
             $total = count($samples);
             $success = count($ok);
             $status = $success > 0 ? '✅' : '❌';
-            $ratio = "{$success}/{$total}";
 
             if ($success === 0) {
-                $lines[] = "{$status} 🇮🇷 Iran, {$en} ({$fa}) — {$ratio} — no response";
+                // $total can be 0 too (check-host's own probe never got a
+                // sample at all, not just failed ones) — showing "0/0"
+                // there reads as broken, so the ratio is only shown once
+                // there's an actual ratio to report.
+                $ratio = $total > 0 ? "{$success}/{$total} " : '';
+                $lines[] = "{$status} 🇮🇷 Iran, {$city} {$ratio}- no response";
                 continue;
             }
 
             $avgMs = (int) round((array_sum(array_column($ok, 1)) / $success) * 1000);
-            $lines[] = "{$status} 🇮🇷 Iran, {$en} ({$fa}) — {$ratio} — {$avgMs}ms";
+            $lines[] = "{$status} 🇮🇷 Iran, {$city} {$success}/{$total} - {$avgMs}ms";
         }
 
         return $lines === [] ? 'No ping result received.' : implode("\n", $lines);
