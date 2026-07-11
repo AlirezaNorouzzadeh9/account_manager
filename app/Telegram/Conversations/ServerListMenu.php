@@ -4,10 +4,12 @@ namespace App\Telegram\Conversations;
 
 use App\Jobs\InstallPasarguardNodeJob;
 use App\Jobs\PollProviderActionJob;
+use App\Jobs\ServerPingCheckJob;
 use App\Jobs\UpdateWireguardsJob;
 use App\Models\Panel;
 use App\Models\ServerSecret;
 use App\Models\WireguardProfile;
+use App\Services\CheckHost\CheckHostClient;
 use App\Services\Providers\ProviderClient;
 use App\Services\Providers\ProviderException;
 use App\Services\Providers\ProviderManager;
@@ -229,6 +231,7 @@ class ServerListMenu extends InlineMenu
             InlineKeyboardButton::make('📈 ریسایز', callback_data: 'x@resizeMenu'),
             InlineKeyboardButton::make('🧱 ریبیلد', callback_data: 'x@rebuildMenu'),
             InlineKeyboardButton::make('🌐 آی‌پی رزرو', callback_data: 'x@reservedIpMenu'),
+            InlineKeyboardButton::make('📡 پینگ از ایران', callback_data: 'x@checkPing'),
         ], perRow: 3);
 
         // VPN node management
@@ -482,6 +485,34 @@ class ServerListMenu extends InlineMenu
         }
 
         $this->renderServerDetail($bot);
+    }
+
+    public function checkPing(Nutgram $bot): void
+    {
+        try {
+            $server = $this->client()->getServer($this->serverId);
+        } catch (ProviderException $e) {
+            $this->setCallbackQueryOptions(['text' => "خطا: {$e->getMessage()}", 'show_alert' => true]);
+            return;
+        }
+
+        $ip = collect($server['networks']['v4'] ?? [])->firstWhere('type', 'public')['ip_address'] ?? null;
+
+        if (! $ip) {
+            $this->setCallbackQueryOptions(['text' => 'آی‌پی این سرور پیدا نشد.', 'show_alert' => true]);
+            return;
+        }
+
+        try {
+            $requestId = app(CheckHostClient::class)->requestPing($ip);
+        } catch (\Throwable $e) {
+            $this->setCallbackQueryOptions(['text' => "خطا در شروع پینگ: {$e->getMessage()}", 'show_alert' => true]);
+            return;
+        }
+
+        ServerPingCheckJob::dispatch($requestId, $ip, $server['name'] ?? $this->serverId, $bot->chatId());
+
+        $this->setCallbackQueryOptions(['text' => '📡 درخواست پینگ از ایران ارسال شد. نتیجه به‌زودی می‌رسد.']);
     }
 
     /**

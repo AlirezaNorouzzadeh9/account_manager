@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\CreateServerFinalReportJob;
 use App\Jobs\CreateServerReadyJob;
+use App\Jobs\ServerPingCheckJob;
 use App\Models\Panel;
 use App\Services\CheckHost\CheckHostClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -292,5 +293,54 @@ class CheckHostTest extends TestCase
 
         $this->assertStringContainsString('بعد از 10 تلاش', $body['text']);
         $this->assertStringContainsString('recreate_server:5:99', json_encode($body['reply_markup']));
+    }
+
+    public function test_server_ping_check_job_always_reports_clean_result(): void
+    {
+        Http::fake([
+            'check-host.net/check-result/*' => Http::response([
+                'ir5.node.check-host.net' => [[['OK', 0.08]]],
+            ]),
+        ]);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        $job = new ServerPingCheckJob('fake-request-id', '9.9.9.9', 'my-server-1', $bot->chatId() ?? 1);
+        $job->handle($bot, new CheckHostClient());
+
+        $history = $bot->getRequestHistory();
+        $this->assertCount(1, $history);
+
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+
+        $this->assertStringContainsString('✅', $body['text']);
+        $this->assertStringContainsString('my-server-1', $body['text']);
+        $this->assertStringContainsString('9.9.9.9', $body['text']);
+    }
+
+    public function test_server_ping_check_job_always_reports_bad_result_too(): void
+    {
+        Http::fake([
+            'check-host.net/check-result/*' => Http::response([
+                'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+            ]),
+        ]);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        $job = new ServerPingCheckJob('fake-request-id', '9.9.9.9', 'my-server-1', $bot->chatId() ?? 1);
+        $job->handle($bot, new CheckHostClient());
+
+        $history = $bot->getRequestHistory();
+        $this->assertCount(1, $history);
+
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+
+        $this->assertStringContainsString('⚠️', $body['text']);
+        $this->assertStringContainsString('no response', $body['text']);
     }
 }

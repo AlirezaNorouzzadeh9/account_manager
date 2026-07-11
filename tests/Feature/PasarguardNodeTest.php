@@ -66,7 +66,7 @@ class PasarguardNodeTest extends TestCase
         $bot->hearCallbackQueryData('server:list')->reply();
         $bot->hearCallbackQueryData("{$panel->id}")->reply();
         $bot->hearCallbackQueryData('55')->reply();
-        $bot->hearCallbackQueryData('x@@@@@@')->reply(); // 7th x-prefixed button in the grid = confirmInstallNode
+        $bot->hearCallbackQueryData('x@@@@@@@')->reply(); // 8th x-prefixed button in the grid = confirmInstallNode
         $bot->hearCallbackQueryData('none')->reply(); // wireguard profile picker: "بدون وایرگارد"
         $bot->hearCallbackQueryData('yes')->reply();
 
@@ -112,7 +112,7 @@ class PasarguardNodeTest extends TestCase
         $bot->hearCallbackQueryData('server:list')->reply();
         $bot->hearCallbackQueryData("{$panel->id}")->reply();
         $bot->hearCallbackQueryData('56')->reply();
-        $bot->hearCallbackQueryData('x@@@@@@')->reply(); // confirmInstallNode -> wireguard profile picker
+        $bot->hearCallbackQueryData('x@@@@@@@')->reply(); // confirmInstallNode -> wireguard profile picker
         $bot->hearCallbackQueryData('none')->reply(); // "بدون وایرگارد", no secret stored yet
         $bot->hearText('the-current-root-password')->reply();
 
@@ -415,7 +415,7 @@ class PasarguardNodeTest extends TestCase
         $bot->hearCallbackQueryData('server:list')->reply();
         $bot->hearCallbackQueryData("{$panel->id}")->reply();
         $bot->hearCallbackQueryData('57')->reply();
-        $bot->hearCallbackQueryData('x@@@@@@@')->reply(); // 8th x-prefixed button = updateWireguards -> profile picker
+        $bot->hearCallbackQueryData('x@@@@@@@@')->reply(); // 9th x-prefixed button = updateWireguards -> profile picker
         $bot->hearCallbackQueryData('none')->reply(); // wireguard profile picker: "بدون وایرگارد"
 
         Queue::assertPushed(UpdateWireguardsJob::class);
