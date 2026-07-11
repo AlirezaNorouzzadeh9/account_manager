@@ -34,7 +34,7 @@ class PasarguardNodeReconnector
             }
         }
 
-        return 'چون آی‌پی پشت این دامنه عوض شده، یک‌بار این نود را از پنل PasarGuard ریست/ری‌استارت کنید تا تغییر اعمال شود.';
+        return 'چون آی‌پی پشت این دامنه عوض شده، یک‌بار دستی این نود را از پنل PasarGuard ریست/ری‌استارت کنید تا تغییر اعمال شود.';
     }
 
     protected function panelConfigured(): bool

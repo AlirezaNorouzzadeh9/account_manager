@@ -14,7 +14,7 @@ use Throwable;
 
 /**
  * Part of the periodic health check (see the servers:check-pings command,
- * run every 30 minutes via the server's crontab): pings one server from Iran
+ * run every 10 minutes via the server's crontab): pings one server from Iran
  * and, ONLY if a node fails, alerts every admin with a "🔄 تغییر سرور"
  * button. A clean or inconclusive result stays silent on purpose — this is a
  * "tell me when something's wrong" check, not a status report.

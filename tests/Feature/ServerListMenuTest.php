@@ -103,10 +103,21 @@ class ServerListMenuTest extends TestCase
         $bot->hearCallbackQueryData('server:list')->reply();
         $bot->hearCallbackQueryData("{$panel->id}")->reply();
 
-        $history = $bot->getRequestHistory();
-        [$request] = array_values(end($history));
-        $body = json_decode((string) $request->getBody(), true);
+        // The very last history entry after a callback tap is always the
+        // automatic answerCallbackQuery (no "reply_markup" field) — find the
+        // last actual sendMessage/editMessageText body instead.
+        $markup = null;
 
-        $this->assertStringContainsString('New York 1', json_encode($body['reply_markup'] ?? [], JSON_UNESCAPED_UNICODE));
+        foreach (array_reverse($bot->getRequestHistory()) as $item) {
+            [$request] = array_values($item);
+            $body = json_decode((string) $request->getBody(), true);
+
+            if (isset($body['reply_markup'])) {
+                $markup = $body['reply_markup'];
+                break;
+            }
+        }
+
+        $this->assertStringContainsString('New York 1', json_encode($markup, JSON_UNESCAPED_UNICODE));
     }
 }

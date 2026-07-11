@@ -25,7 +25,7 @@ class ReplaceServerPollJob implements ShouldQueue
     public int $tries = 60;
 
     /** Total create attempts (including the first) before giving up on a clean ping. */
-    public const MAX_ATTEMPTS = 3;
+    public const MAX_ATTEMPTS = 10;
 
     public function __construct(
         protected int $oldPanelId,
@@ -38,6 +38,12 @@ class ReplaceServerPollJob implements ShouldQueue
         protected ?int $wireguardProfileId,
         protected int $chatId,
         protected int $attempt,
+        // The best candidate found in an earlier round, if any (see
+        // ReplaceServerPingCheckJob's "keep the best of two" retry logic) —
+        // the old server being replaced is separate and never part of this.
+        protected int|string|null $bestServerId = null,
+        protected ?string $bestIp = null,
+        protected ?int $bestOkCount = null,
     ) {
     }
 
@@ -114,6 +120,9 @@ class ReplaceServerPollJob implements ShouldQueue
             $this->wireguardProfileId,
             $this->chatId,
             $this->attempt,
+            $this->bestServerId,
+            $this->bestIp,
+            $this->bestOkCount,
         );
     }
 

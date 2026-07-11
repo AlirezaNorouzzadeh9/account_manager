@@ -118,4 +118,27 @@ class CheckHostClient
 
         return true;
     }
+
+    /**
+     * @param array $data as returned by getResult()
+     * How many of the probed Iran nodes had at least one successful ping —
+     * used to compare two candidate servers and keep whichever is closer to
+     * a fully clean ping when neither one is perfect (see
+     * CreateServerFinalReportJob/ReplaceServerPingCheckJob's "keep the best
+     * of two" retry logic).
+     */
+    public function okNodeCount(array $data): int
+    {
+        $count = 0;
+
+        foreach ($data as $pings) {
+            $samples = $pings[0] ?? [];
+
+            if (! empty(array_filter($samples, fn ($s) => ($s[0] ?? null) === 'OK'))) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
 }

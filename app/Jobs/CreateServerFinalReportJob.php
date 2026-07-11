@@ -18,11 +18,14 @@ use Throwable;
 
 /**
  * Waits for the check-host.net Iran ping result. If every Iran node is OK,
- * sends the ONE final "server ready" message (IP + credentials + ping
- * results). If not, and a region/size/image spec is known, this deletes the
- * server and builds another one instead of reporting — repeating up to
- * MAX_ATTEMPTS times — so the admin is only ever notified once, about a
- * server with a clean Iran ping (or, failing that, the last attempt).
+ * reports that server and deletes whatever earlier attempt was being kept as
+ * the "best so far" (if any). If not, and a region/size/image spec is known,
+ * this compares the current attempt against the best one seen so far, keeps
+ * only the winner (deleting the loser), and builds ANOTHER fresh candidate to
+ * test next — repeating up to MAX_ATTEMPTS times. At most two servers ever
+ * exist at once this way: the reigning "best so far" and the one new
+ * candidate currently being judged against it. Once attempts run out, the
+ * best one found (even if not perfectly clean) is what gets reported.
  */
 class CreateServerFinalReportJob implements ShouldQueue
 {
@@ -44,6 +47,11 @@ class CreateServerFinalReportJob implements ShouldQueue
         protected ?string $size = null,
         protected ?string $image = null,
         protected int $attempt = 1,
+        // The best candidate found in an earlier round, if any (see class docblock).
+        protected int|string|null $bestServerId = null,
+        protected ?string $bestIp = null,
+        protected ?string $bestCredentials = null,
+        protected ?int $bestOkCount = null,
     ) {
     }
 
@@ -58,19 +66,27 @@ class CreateServerFinalReportJob implements ShouldQueue
         }
 
         $clean = $checkHost->allNodesOk($result);
+        $okCount = $checkHost->okNodeCount($result);
 
-        if ($clean || ! $this->canRetry() || $this->attempt >= self::MAX_ATTEMPTS) {
-            $this->send($bot, $checkHost->formatResult($result), $clean);
+        if ($clean) {
+            $this->deleteBestIfExists();
+            $this->send($bot, $checkHost->formatResult($result), true, $this->serverId, $this->ip, $this->credentials);
 
             return;
         }
 
-        $this->retry($bot, $checkHost->formatResult($result));
+        if (! $this->canRetry() || $this->attempt >= self::MAX_ATTEMPTS) {
+            $this->finishWithBestOf($bot, $checkHost->formatResult($result), $okCount);
+
+            return;
+        }
+
+        $this->retry($bot, $checkHost->formatResult($result), $okCount);
     }
 
     public function failed(?Throwable $exception): void
     {
-        $this->send(app(Nutgram::class), 'نتیجه‌ی پینگ آماده نشد.', false);
+        $this->finishWithBestOf(app(Nutgram::class), 'نتیجه‌ی پینگ آماده نشد.', 0);
     }
 
     protected function canRetry(): bool
@@ -79,24 +95,81 @@ class CreateServerFinalReportJob implements ShouldQueue
             && $this->panelId !== null && $this->serverId !== null;
     }
 
-    /**
-     * Deletes this attempt and builds another with the same spec, looping
-     * the create → ping-check cycle via a fresh CreateServerReadyJob.
-     */
-    protected function retry(Nutgram $bot, string $pingSection): void
+    protected function hasBest(): bool
+    {
+        return $this->bestServerId !== null;
+    }
+
+    protected function currentBeatsBest(int $currentOkCount): bool
+    {
+        return ! $this->hasBest() || $currentOkCount > $this->bestOkCount;
+    }
+
+    protected function deleteBestIfExists(): void
+    {
+        if (! $this->hasBest()) {
+            return;
+        }
+
+        $this->deleteServerSilently($this->bestServerId);
+    }
+
+    protected function deleteServerSilently(int|string $serverId): void
     {
         $panel = Panel::find($this->panelId);
 
         if (! $panel) {
-            $this->send($bot, $pingSection, false);
-
             return;
         }
 
         try {
-            ProviderManager::forPanel($panel)->deleteServer($this->serverId);
+            ProviderManager::forPanel($panel)->deleteServer($serverId);
         } catch (ProviderException) {
-            // best-effort cleanup of the bad attempt; still worth trying again
+            // best-effort cleanup of a discarded attempt
+        }
+    }
+
+    /**
+     * Attempts exhausted (or retry became impossible) without a clean ping —
+     * keeps whichever of [current attempt, best-so-far] scored higher and
+     * reports it as the final result.
+     */
+    protected function finishWithBestOf(Nutgram $bot, string $pingSection, int $currentOkCount): void
+    {
+        if ($this->hasBest() && $this->bestOkCount >= $currentOkCount) {
+            $this->deleteServerSilently($this->serverId);
+            $this->send($bot, $pingSection, false, $this->bestServerId, $this->bestIp, $this->bestCredentials);
+
+            return;
+        }
+
+        $this->deleteBestIfExists();
+        $this->send($bot, $pingSection, false, $this->serverId, $this->ip, $this->credentials);
+    }
+
+    /**
+     * Ping wasn't clean and attempts remain: keep whichever of [current
+     * attempt, best-so-far] scored higher (deleting the loser), then build a
+     * FRESH candidate to test next round.
+     */
+    protected function retry(Nutgram $bot, string $pingSection, int $currentOkCount): void
+    {
+        if ($this->currentBeatsBest($currentOkCount)) {
+            $this->deleteBestIfExists();
+            [$newBestServerId, $newBestIp, $newBestCredentials, $newBestOkCount] =
+                [$this->serverId, $this->ip, $this->credentials, $currentOkCount];
+        } else {
+            $this->deleteServerSilently($this->serverId);
+            [$newBestServerId, $newBestIp, $newBestCredentials, $newBestOkCount] =
+                [$this->bestServerId, $this->bestIp, $this->bestCredentials, $this->bestOkCount];
+        }
+
+        $panel = Panel::find($this->panelId);
+
+        if (! $panel) {
+            $this->send($bot, $pingSection, false, $newBestServerId, $newBestIp, $newBestCredentials);
+
+            return;
         }
 
         try {
@@ -109,15 +182,17 @@ class CreateServerFinalReportJob implements ShouldQueue
             );
         } catch (ProviderException $e) {
             $bot->sendMessage(
-                "❌ تلاش دوباره برای ساخت سرور «{$this->hostname}» با آی‌پی تمیز ناموفق بود:\n{$e->getMessage()}",
+                "⚠️ تلاش دوباره برای ساخت سرور «{$this->hostname}» با آی‌پی تمیز ناموفق بود:\n{$e->getMessage()}\n".
+                'بهترین سرور پیدا شده تا الان نگه داشته شد.',
                 chat_id: $this->chatId,
             );
+            $this->send($bot, $pingSection, false, $newBestServerId, $newBestIp, $newBestCredentials);
 
             return;
         }
 
         if (! $actionId) {
-            $bot->sendMessage("❌ تلاش دوباره برای ساخت سرور «{$this->hostname}» ناموفق بود.", chat_id: $this->chatId);
+            $this->send($bot, $pingSection, false, $newBestServerId, $newBestIp, $newBestCredentials);
 
             return;
         }
@@ -132,31 +207,41 @@ class CreateServerFinalReportJob implements ShouldQueue
             $this->size,
             $this->image,
             $this->attempt + 1,
+            $newBestServerId,
+            $newBestIp,
+            $newBestCredentials,
+            $newBestOkCount,
         );
     }
 
-    protected function send(Nutgram $bot, string $pingSection, bool $clean): void
-    {
+    protected function send(
+        Nutgram $bot,
+        string $pingSection,
+        bool $clean,
+        int|string|null $finalServerId,
+        ?string $finalIp,
+        ?string $finalCredentials,
+    ): void {
         $message = "✅ سرور «{$this->hostname}» با موفقیت ساخته شد.\n".
-            "🌐 آی‌پی: `{$this->ip}`\n\n".
-            "{$this->credentials}\n\n".
+            "🌐 آی‌پی: `{$finalIp}`\n\n".
+            "{$finalCredentials}\n\n".
             "📡 پینگ از ایران:\n{$pingSection}";
 
         if (! $clean && $this->attempt > 1) {
-            $message .= "\n\n⚠️ بعد از {$this->attempt} تلاش، پینگ کاملاً تمیز نشد — همین آخرین سرور نگه داشته شد.";
+            $message .= "\n\n⚠️ بعد از {$this->attempt} تلاش، پینگ کاملاً تمیز نشد — بهترین سرور پیدا‌شده (با بیشترین پینگ موفق) نگه داشته شد.";
         }
 
         $keyboard = null;
 
-        if ($this->panelId && $this->serverId) {
+        if ($this->panelId && $finalServerId) {
             $keyboard = InlineKeyboardMarkup::make()
-                ->addRow(InlineKeyboardButton::make('🔍 مشاهده سرور', callback_data: "view_server:{$this->panelId}:{$this->serverId}"));
+                ->addRow(InlineKeyboardButton::make('🔍 مشاهده سرور', callback_data: "view_server:{$this->panelId}:{$finalServerId}"));
 
             // Only offered when the ping ISN'T already clean — a clean ping
             // means the automatic retry-until-clean loop already did its
             // job, so a manual rebuild button would be redundant.
             if (! $clean) {
-                $keyboard->addRow(InlineKeyboardButton::make('🔄 تغییر سرور', callback_data: "recreate_server:{$this->panelId}:{$this->serverId}"));
+                $keyboard->addRow(InlineKeyboardButton::make('🔄 تغییر سرور', callback_data: "recreate_server:{$this->panelId}:{$finalServerId}"));
             }
         }
 

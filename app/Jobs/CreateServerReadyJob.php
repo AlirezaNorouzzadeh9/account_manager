@@ -35,6 +35,13 @@ class CreateServerReadyJob implements ShouldQueue
         protected ?string $size = null,
         protected ?string $image = null,
         protected int $attempt = 1,
+        // The best candidate found so far across earlier attempts (see
+        // CreateServerFinalReportJob's "keep the best of two" retry logic) —
+        // null on the very first attempt, when there's nothing to compare yet.
+        protected int|string|null $bestServerId = null,
+        protected ?string $bestIp = null,
+        protected ?string $bestCredentials = null,
+        protected ?int $bestOkCount = null,
     ) {
     }
 
@@ -57,7 +64,7 @@ class CreateServerReadyJob implements ShouldQueue
         }
 
         if ($status !== 'completed') {
-            $bot->sendMessage("❌ ساخت سرور «{$this->hostname}» ناموفق بود.", chat_id: $this->chatId);
+            $this->reportBestOrFail($bot, "❌ ساخت سرور «{$this->hostname}» (تلاش {$this->attempt}) ناموفق بود.");
 
             return;
         }
@@ -93,12 +100,25 @@ class CreateServerReadyJob implements ShouldQueue
                     $this->size,
                     $this->image,
                     $this->attempt,
+                    $this->bestServerId,
+                    $this->bestIp,
+                    $this->bestCredentials,
+                    $this->bestOkCount,
                 );
 
                 return;
             } catch (Throwable) {
                 // ping check is a bonus feature, never fail server creation over it
             }
+        }
+
+        // Couldn't get this attempt's IP or start its ping check — if an
+        // earlier attempt is already known to be reachable, report that one
+        // instead of a bare failure/no-ping message about this broken one.
+        if (! $ip && $this->bestServerId !== null) {
+            $this->reportBest($bot);
+
+            return;
         }
 
         $message = "✅ سرور «{$this->hostname}» با موفقیت ساخته شد.";
@@ -114,6 +134,37 @@ class CreateServerReadyJob implements ShouldQueue
                 InlineKeyboardButton::make('🔍 مشاهده سرور', callback_data: "view_server:{$this->panelId}:{$serverId}")
             )
             : null;
+
+        $bot->sendMessage($message, chat_id: $this->chatId, reply_markup: $keyboard, parse_mode: 'Markdown');
+    }
+
+    /**
+     * Used when THIS attempt fails outright (creation failed, or no IP/ping
+     * could be obtained) but an earlier attempt already found in the "keep
+     * the best of two" retry loop is known-reachable — reports that one
+     * instead of just failing, since it's still a perfectly usable server.
+     */
+    protected function reportBestOrFail(Nutgram $bot, string $failureMessage): void
+    {
+        if ($this->bestServerId === null) {
+            $bot->sendMessage($failureMessage, chat_id: $this->chatId);
+
+            return;
+        }
+
+        $this->reportBest($bot);
+    }
+
+    protected function reportBest(Nutgram $bot): void
+    {
+        $message = "✅ سرور «{$this->hostname}» با موفقیت ساخته شد.\n".
+            "🌐 آی‌پی: `{$this->bestIp}`\n\n".
+            "{$this->bestCredentials}\n\n".
+            "⚠️ تلاش {$this->attempt} ناموفق بود؛ این نتیجه‌ی یک تلاش قبلی است.";
+
+        $keyboard = InlineKeyboardMarkup::make()->addRow(
+            InlineKeyboardButton::make('🔍 مشاهده سرور', callback_data: "view_server:{$this->panelId}:{$this->bestServerId}")
+        );
 
         $bot->sendMessage($message, chat_id: $this->chatId, reply_markup: $keyboard, parse_mode: 'Markdown');
     }

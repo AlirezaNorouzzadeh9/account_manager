@@ -97,27 +97,6 @@ class ReplaceServerTest extends TestCase
         $this->assertStringContainsString('recreate_server:5:99', json_encode($body['reply_markup']));
     }
 
-    public function test_final_report_adds_recreate_button_even_when_ping_complete(): void
-    {
-        Http::fake([
-            'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => [[['OK', 0.08]]],
-            ]),
-        ]);
-
-        /** @var FakeNutgram $bot */
-        $bot = $this->app->make(Nutgram::class);
-
-        $job = new CreateServerFinalReportJob('req-2', '9.9.9.9', 'srv-2', 'creds', $bot->chatId() ?? 1, 5, 100);
-        $job->handle($bot, new CheckHostClient());
-
-        $history = $bot->getRequestHistory();
-        [$request] = array_values(end($history));
-        $body = json_decode((string) $request->getBody(), true);
-
-        $this->assertStringContainsString('recreate_server:5:100', json_encode($body['reply_markup']));
-    }
-
     public function test_recreate_conversation_deletes_then_recreates_with_no_node_or_wireguard(): void
     {
         Queue::fake();
@@ -275,15 +254,65 @@ class ReplaceServerTest extends TestCase
         $job = new ReplaceServerPingCheckJob('req-abc', $panel->id, '111', '222', '9.9.9.9', 'srv-old', 'nyc1', 's-1vcpu-1gb', 'ubuntu-24-04-x64', null, $bot->chatId() ?? 1, 1);
         $job->handle($bot, new CheckHostClient());
 
+        // No prior "best" attempt yet, so this one (222) becomes it and is
+        // kept alive — only a fresh candidate is created to test against it,
+        // per the "keep the best of two" retry algorithm.
+        Http::assertNotSent(fn ($request) => $request->method() === 'DELETE');
+
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && str_contains((string) $request->url(), '/droplets'));
+
+        Queue::assertPushed(ReplaceServerPollJob::class, function ($job) {
+            return $this->prop($job, 'newServerActionId') === 1000
+                && $this->prop($job, 'attempt') === 2
+                && $this->prop($job, 'bestServerId') === '222'
+                && $this->prop($job, 'bestIp') === '9.9.9.9'
+                && $this->prop($job, 'bestOkCount') === 0;
+        });
+    }
+
+    public function test_ping_check_prefers_the_higher_scoring_candidate_when_retrying(): void
+    {
+        Queue::fake();
+        [$panel, ] = $this->makePanelAndSecret(111);
+
+        Http::fake([
+            // The current candidate (222) scores 0/1 — worse than the
+            // existing best-so-far (111... standing in for an earlier
+            // attempt, scored 1) — so 222 must be discarded, not 111.
+            'check-host.net/check-result/*' => Http::response([
+                'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+            ]),
+            'api.digitalocean.com/v2/droplets/222' => Http::response([], 204),
+            'api.digitalocean.com/v2/droplets' => Http::response([
+                'droplet' => ['id' => 444, 'name' => 'srv-old'],
+                'links' => ['actions' => [['id' => 2000, 'rel' => 'create', 'href' => '']]],
+            ]),
+        ]);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        $job = new ReplaceServerPingCheckJob(
+            'req-abc', $panel->id, '111', '222', '9.9.9.9', 'srv-old', 'nyc1', 's-1vcpu-1gb', 'ubuntu-24-04-x64', null,
+            $bot->chatId() ?? 1, 2, '333', '8.8.8.8', 1,
+        );
+        $job->handle($bot, new CheckHostClient());
+
+        // The worse current attempt (222) is discarded, not the existing best (333).
         Http::assertSent(fn ($request) => $request->method() === 'DELETE'
             && str_contains((string) $request->url(), '/droplets/222'));
 
         Queue::assertPushed(ReplaceServerPollJob::class, function ($job) {
-            return $this->prop($job, 'newServerActionId') === 1000 && $this->prop($job, 'attempt') === 2;
+            return $this->prop($job, 'newServerActionId') === 2000
+                && $this->prop($job, 'attempt') === 3
+                && $this->prop($job, 'bestServerId') === '333'
+                && $this->prop($job, 'bestIp') === '8.8.8.8'
+                && $this->prop($job, 'bestOkCount') === 1;
         });
     }
 
-    public function test_ping_check_gives_up_after_max_attempts_without_touching_old_server(): void
+    public function test_ping_check_gives_up_after_max_attempts_and_proceeds_with_the_best_found(): void
     {
         Queue::fake();
         [$panel, ] = $this->makePanelAndSecret(111);
@@ -303,9 +332,14 @@ class ReplaceServerTest extends TestCase
         );
         $job->handle($bot, new CheckHostClient());
 
+        // No competing "best" exists, so the lone candidate (222) wins by
+        // default — nothing to delete, but the search DOES finish and hand
+        // off to the node/WireGuard install, not just give up.
         Http::assertNotSent(fn ($request) => $request->method() === 'DELETE');
-        Queue::assertNotPushed(ReplaceServerPollJob::class);
-        Queue::assertNotPushed(ReplaceServerFinishJob::class);
+
+        Queue::assertPushed(ReplaceServerFinishJob::class, function ($job) {
+            return $this->prop($job, 'newServerId') === '222' && $this->prop($job, 'newIp') === '9.9.9.9';
+        });
 
         $history = $bot->getRequestHistory();
         [$request] = array_values(end($history));

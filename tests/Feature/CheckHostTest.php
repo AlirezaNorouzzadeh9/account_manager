@@ -190,14 +190,34 @@ class CheckHostTest extends TestCase
         );
         $job->handle($bot, new CheckHostClient());
 
-        Http::assertSent(fn ($request) => str_contains((string) $request->url(), '/droplets/99')
+        // No prior "best" attempt yet, so this one (99) becomes it and is
+        // kept alive — only a fresh candidate is created to test against it,
+        // per the "keep the best of two" retry algorithm (see
+        // ReplaceServerPingCheckJob for the same logic on the replace flow).
+        Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), '/droplets/99')
             && $request->method() === 'DELETE');
 
-        Queue::assertPushed(CreateServerReadyJob::class);
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && str_contains((string) $request->url(), '/droplets'));
+
+        Queue::assertPushed(CreateServerReadyJob::class, function ($job) {
+            return $this->prop($job, 'attempt') === 2
+                && $this->prop($job, 'bestServerId') === 99
+                && $this->prop($job, 'bestIp') === '9.9.9.9'
+                && $this->prop($job, 'bestOkCount') === 0;
+        });
 
         // Still retrying — no Telegram message sent yet, that only happens
         // once a clean ping is found or attempts are exhausted.
         $this->assertEmpty($bot->getRequestHistory());
+    }
+
+    protected function prop(object $object, string $name): mixed
+    {
+        $property = new \ReflectionProperty($object, $name);
+        $property->setAccessible(true);
+
+        return $property->getValue($object);
     }
 
     public function test_final_report_job_sends_immediately_and_omits_recreate_button_when_ping_is_clean(): void

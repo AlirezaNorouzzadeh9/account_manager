@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 use Throwable;
 
 /**
- * Runs every 30 minutes (see the server's crontab — no schedule:run loop is
+ * Runs every 10 minutes (see the server's crontab — no schedule:run loop is
  * set up for this project, so this command is invoked directly): for every
  * server this bot has a full build spec for, fetches its current IP and
  * queues a CheckServerPingJob. Best-effort — a panel/server/API hiccup just
