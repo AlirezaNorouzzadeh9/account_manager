@@ -188,7 +188,9 @@ class PasarguardNodeTest extends TestCase
         $installer = \Mockery::mock(PasarguardNodeInstaller::class);
         $installer->shouldReceive('install')
             ->once()
-            ->with('8.8.8.8', 'root', 'already-known-password', 'fake-private-key', 'germany')
+            // No profile name passed — the manual install always uses a
+            // per-IP cert/registration now, never the DNS-backed domain one.
+            ->with('8.8.8.8', 'root', 'already-known-password', 'fake-private-key')
             ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => 'fake-cert-pem', 'domain' => null, 'dns_warning' => null]);
 
         config(['bot.admins' => ['555']]);

@@ -67,7 +67,12 @@ class InstallPasarguardNodeJob implements ShouldQueue
         $profile = $secret->wireguardProfile;
 
         try {
-            $result = $installer->install($ip, 'root', $secret->root_password, $profile?->private_key, $profile?->name);
+            // No profile name passed: this node always gets its own per-IP
+            // certificate and is always registered in the panel by IP, never
+            // by a DNS-backed domain (see PasarguardNodeInstaller — a domain
+            // cert's SAN only covers that domain, so registering it under a
+            // plain IP would fail the panel's own certificate check).
+            $result = $installer->install($ip, 'root', $secret->root_password, $profile?->private_key);
         } catch (RuntimeException $e) {
             if ($this->attempts() < $this->tries) {
                 $this->release(15);
@@ -99,19 +104,8 @@ class InstallPasarguardNodeJob implements ShouldQueue
             $message .= "\n\n".$this->condenseLog($result['log']);
         }
 
-        // Shown regardless of overall success — DNS is best-effort and
-        // silently falling back to the per-IP cert without saying why made
-        // this impossible to debug from the chat alone.
-        if (! empty($result['dns_warning'])) {
-            $message .= "\n\n⚠️ {$result['dns_warning']}";
-        }
-
         if ($result['success'] && $profile && ! empty($result['cert'])) {
-            // The DNS-backed domain (if any) is the address the PANEL should
-            // actually connect through — it stays stable across a future
-            // "🔄 تغییر سرور", the raw IP wouldn't.
-            $address = $result['domain'] ?? $ip;
-            $message .= "\n\n".$this->registerNode($profile, $address, $result['cert']);
+            $message .= "\n\n".$this->registerNode($profile, $ip, $result['cert']);
         } elseif (! empty($result['cert'])) {
             $message .= "\n\nگواهی SSL این نود (برای ثبت در پنل PasarGuard):\n{$result['cert']}";
         }

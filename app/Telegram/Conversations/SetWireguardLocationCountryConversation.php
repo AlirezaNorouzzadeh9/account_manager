@@ -9,11 +9,12 @@ use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 
 /**
- * Sets a WireGuard location's "country" — a free-text label the admin types
- * themselves purely to recognize which location (e.g. "al") is for which
- * country in the bot's UI. Unlike `name`, it has no technical role (name
- * doubles as the interface/config filename on the node), so any text is
- * accepted.
+ * Sets a WireGuard location's "country" — a 2-letter ISO code (e.g. "AL")
+ * the admin types themselves, used purely to show a flag emoji for that
+ * location in the bot's UI (see WireguardLocation::flag()). Unlike `name`,
+ * it has no technical role (name doubles as the interface/config filename
+ * on the node), so it's validated for format only, not against a real list
+ * of countries.
  */
 class SetWireguardLocationCountryConversation extends Conversation
 {
@@ -27,7 +28,7 @@ class SetWireguardLocationCountryConversation extends Conversation
         $this->locationId = $locationId;
 
         $bot->sendMessage(
-            "نام کشور این لوکیشن را بفرستید (مثلاً: آلبانی).\n".
+            "کد دو حرفی کشور این لوکیشن را بفرستید (مثلاً: DE برای آلمان).\n".
             'برای حذف مقدار فعلی، - بفرستید.',
             reply_markup: $this->backButton()
         );
@@ -44,7 +45,19 @@ class SetWireguardLocationCountryConversation extends Conversation
         }
 
         $country = trim((string) $bot->message()?->text);
-        $country = ($country === '' || $country === '-') ? null : $country;
+
+        if ($country === '' || $country === '-') {
+            $country = null;
+        } elseif (preg_match('/^[A-Za-z]{2}$/', $country)) {
+            $country = strtoupper($country);
+        } else {
+            $bot->sendMessage(
+                'کد کشور نامعتبر است. یک کد دو حرفی بفرستید (مثلاً: DE)، یا برای حذف مقدار فعلی - بفرستید:',
+                reply_markup: $this->backButton()
+            );
+
+            return;
+        }
 
         WireguardLocation::whereKey($this->locationId)->update(['country' => $country]);
 

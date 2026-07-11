@@ -45,7 +45,7 @@ class AddWireguardConversation extends Conversation
 
         $this->name = $name;
         $bot->sendMessage(
-            "نام کشور این لوکیشن را بفرستید (فقط برای تشخیص خودتان در ربات، مثلاً: آلبانی).\n".
+            "کد دو حرفی کشور این لوکیشن را بفرستید تا پرچمش نشان داده شود (مثلاً: DE برای آلمان، NL برای هلند، IT برای ایتالیا).\n".
             'برای رد شدن، - بفرستید:',
             reply_markup: $this->backButton()
         );
@@ -62,7 +62,18 @@ class AddWireguardConversation extends Conversation
 
         $country = trim((string) $bot->message()?->text);
 
-        $this->country = ($country === '' || $country === '-') ? null : $country;
+        if ($country === '' || $country === '-') {
+            $this->country = null;
+        } elseif (preg_match('/^[A-Za-z]{2}$/', $country)) {
+            $this->country = strtoupper($country);
+        } else {
+            $bot->sendMessage(
+                'کد کشور نامعتبر است. یک کد دو حرفی بفرستید (مثلاً: DE)، یا برای رد شدن - بفرستید:',
+                reply_markup: $this->backButton()
+            );
+            return;
+        }
+
         $bot->sendMessage('آی‌پی این لوکیشن را بفرستید:', reply_markup: $this->backButton());
         $this->next('receiveIp');
     }

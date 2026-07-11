@@ -35,16 +35,17 @@ class WireguardTest extends TestCase
         $bot->hearCallbackQueryData('x')->reply(); // "وایرگاردها"
         $bot->hearCallbackQueryData('x')->reply(); // "➕ افزودن لوکیشن" (first x button, empty menu)
         $bot->hearText('germany')->reply();
-        $bot->hearText('Germany')->reply();
+        $bot->hearText('DE')->reply();
         $bot->hearText('89.249.73.213')->reply();
         $bot->hearText('9wZOjtwuKEc0GBcvc3xJQ4Kjo8G3EMXu6zJRzbanOjc=')->reply();
 
         $location = WireguardLocation::first();
         $this->assertNotNull($location);
         $this->assertSame('germany', $location->name);
-        $this->assertSame('Germany', $location->country);
+        $this->assertSame('DE', $location->country);
         $this->assertSame('89.249.73.213', $location->ip);
         $this->assertSame('9wZOjtwuKEc0GBcvc3xJQ4Kjo8G3EMXu6zJRzbanOjc=', $location->server_public_key);
+        $this->assertSame('🇩🇪', $location->flag());
 
         // After saving, the new location's OWN detail screen opens directly
         // (not the full list) with a save confirmation folded into it.
@@ -70,6 +71,24 @@ class WireguardTest extends TestCase
         $bot->hearText('9wZOjtwuKEc0GBcvc3xJQ4Kjo8G3EMXu6zJRzbanOjc=')->reply();
 
         $this->assertNull(WireguardLocation::first()->country);
+    }
+
+    public function test_add_location_rejects_a_country_code_that_is_not_two_letters(): void
+    {
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply();
+        $bot->hearCallbackQueryData('x')->reply();
+        $bot->hearText('al')->reply();
+        $bot->hearText('Germany')->reply(); // not a 2-letter code — rejected
+        $bot->hearText('de')->reply(); // lowercase is fine, normalized to uppercase
+        $bot->hearText('89.249.73.213')->reply();
+        $bot->hearText('9wZOjtwuKEc0GBcvc3xJQ4Kjo8G3EMXu6zJRzbanOjc=')->reply();
+
+        $this->assertSame('DE', WireguardLocation::first()->country);
     }
 
     public function test_back_button_during_add_location_cancels_and_returns_to_list(): void
@@ -165,9 +184,10 @@ class WireguardTest extends TestCase
         $bot->hearCallbackQueryData('x')->reply();
         $bot->hearCallbackQueryData((string) $location->id)->reply(); // showLocation
         $bot->hearCallbackQueryData('x')->reply(); // "🌍 تنظیم کشور" (1st x-prefixed button)
-        $bot->hearText('Albania')->reply();
+        $bot->hearText('AL')->reply();
 
-        $this->assertSame('Albania', $location->fresh()->country);
+        $this->assertSame('AL', $location->fresh()->country);
+        $this->assertSame('🇦🇱', $location->fresh()->flag());
     }
 
     public function test_add_profile_stores_name_and_private_key(): void

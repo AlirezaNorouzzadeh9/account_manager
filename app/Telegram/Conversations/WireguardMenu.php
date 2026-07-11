@@ -49,7 +49,7 @@ class WireguardMenu extends InlineMenu
         ));
 
         $this->addButtonGrid($locations->map(fn (WireguardLocation $location) => InlineKeyboardButton::make(
-            $location->country ? "🔒 {$location->name} ({$location->country})" : "🔒 {$location->name}",
+            $location->country ? "{$location->flag()} {$location->name} ({$location->country})" : "🔒 {$location->name}",
             callback_data: "{$location->id}@showLocation"
         ))->all());
 
@@ -83,7 +83,7 @@ class WireguardMenu extends InlineMenu
         $this->currentLocationId = $location->id;
 
         $countryLine = $location->country
-            ? "کشور: `{$location->country}`\n"
+            ? "کشور: {$location->flag()} `{$location->country}`\n"
             : "کشور تنظیم نشده.\n";
 
         $intro = "🌍 تنظیم کشور — تنظیم نام کشور (فقط برای تشخیص خودتان)\n".
