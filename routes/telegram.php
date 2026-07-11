@@ -14,7 +14,7 @@ use App\Telegram\Conversations\ServerListMenu;
 use App\Telegram\Conversations\SettingsMenu;
 use App\Telegram\Handlers\CancelCommand;
 use App\Telegram\Handlers\StartCommand;
-use App\Telegram\Middleware\AdminOnly;
+use App\Telegram\Middleware\AllowedUsersOnly;
 use SergiX44\Nutgram\Nutgram;
 
 /*
@@ -22,12 +22,12 @@ use SergiX44\Nutgram\Nutgram;
 | Nutgram Handlers
 |--------------------------------------------------------------------------
 |
-| Every incoming update passes the AdminOnly middleware first, then gets
-| dispatched to the matching command / callback handler below.
+| Every incoming update passes the AllowedUsersOnly middleware first, then
+| gets dispatched to the matching command / callback handler below.
 |
 */
 
-$bot->middleware(AdminOnly::class);
+$bot->middleware(AllowedUsersOnly::class);
 
 $bot->onCommand('start', StartCommand::class)->description('نمایش منوی اصلی');
 $bot->onCommand('cancel', CancelCommand::class)->description('لغو عملیات جاری');
@@ -99,7 +99,7 @@ $bot->onCallbackQueryData(
 $bot->onCallbackQueryData(
     'delete_old_server:{panelId}:{serverId}',
     function (Nutgram $bot, int $panelId, string $serverId) {
-        $panel = Panel::find($panelId);
+        $panel = Panel::ownedBy($bot->userId())->find($panelId);
 
         if (! $panel) {
             $bot->sendMessage('این پنل دیگر وجود ندارد.', chat_id: $bot->chatId());

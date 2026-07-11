@@ -133,6 +133,7 @@ class WireguardTest extends TestCase
             'name' => 'germany',
             'ip' => '1.2.3.4',
             'server_public_key' => 'pub',
+            'created_by' => 555,
         ]);
 
         $bot = $this->bot();
@@ -153,6 +154,7 @@ class WireguardTest extends TestCase
             'name' => 'germany',
             'ip' => '1.2.3.4',
             'server_public_key' => 'pub',
+            'created_by' => 555,
         ]);
 
         $bot = $this->bot();
@@ -174,6 +176,7 @@ class WireguardTest extends TestCase
             'name' => 'al',
             'ip' => '1.2.3.4',
             'server_public_key' => 'pub',
+            'created_by' => 555,
         ]);
 
         $bot = $this->bot();
@@ -218,7 +221,7 @@ class WireguardTest extends TestCase
 
     public function test_deleting_a_profile_removes_it_and_clears_it_from_servers(): void
     {
-        $profile = WireguardProfile::create(['name' => 'server-1', 'private_key' => 'fake-key']);
+        $profile = WireguardProfile::create(['name' => 'server-1', 'private_key' => 'fake-key', 'created_by' => 555]);
 
         $bot = $this->bot();
         $bot->willStartConversation();
@@ -235,7 +238,7 @@ class WireguardTest extends TestCase
 
     public function test_set_core_id_updates_the_profile(): void
     {
-        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-key']);
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-key', 'created_by' => 555]);
 
         $bot = $this->bot();
         $bot->willStartConversation();
@@ -252,7 +255,7 @@ class WireguardTest extends TestCase
 
     public function test_set_core_id_rejects_non_numeric_input(): void
     {
-        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-key']);
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-key', 'created_by' => 555]);
 
         $bot = $this->bot();
         $bot->willStartConversation();
@@ -269,7 +272,7 @@ class WireguardTest extends TestCase
 
     public function test_sending_zero_clears_the_profiles_core_id(): void
     {
-        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-key', 'core_id' => 268]);
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-key', 'core_id' => 268, 'created_by' => 555]);
 
         $bot = $this->bot();
         $bot->willStartConversation();

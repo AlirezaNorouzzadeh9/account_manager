@@ -15,10 +15,17 @@ class WireguardProfile extends Model
         'name',
         'private_key',
         'core_id',
+        'created_by',
     ];
 
     protected $casts = [
         'private_key' => 'encrypted',
         'core_id' => 'integer',
     ];
+
+    /** Every profile belongs to exactly one Telegram user — no sharing between users. */
+    public function scopeOwnedBy($query, int|string $telegramId)
+    {
+        return $query->where('created_by', $telegramId);
+    }
 }

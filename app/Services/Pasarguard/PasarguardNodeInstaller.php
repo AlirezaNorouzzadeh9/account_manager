@@ -78,14 +78,17 @@ YAML;
         string $password,
         ?string $wireguardPrivateKey = null,
         ?string $wireguardProfileName = null,
+        ?int $ownerId = null,
     ): array {
         $ssh = $this->connectSsh($host, $username, $password, 'اتصال SSH ناموفق بود (احتمالاً سرور هنوز کاملاً آماده نشده).');
 
         $log = '';
         // No profile PrivateKey chosen for this server => no WireGuard,
         // regardless of how many locations are saved (a [Interface] can't be
-        // built without a PrivateKey).
-        $wireguardConfigs = $wireguardPrivateKey !== null ? WireguardLocation::all() : collect();
+        // built without a PrivateKey). Likewise an unknown owner (e.g. a
+        // legacy panel from before per-user data existed) has no locations
+        // of its own to apply.
+        $wireguardConfigs = $wireguardPrivateKey !== null && $ownerId !== null ? WireguardLocation::ownedBy($ownerId)->get() : collect();
 
         // A just-booted droplet may still be running its first-boot apt
         // operations (cloud-init), holding the dpkg lock — wait it out first,
@@ -244,11 +247,11 @@ YAML;
      *
      * @return array{success: bool, message: string, log: string}
      */
-    public function updateWireguards(string $host, string $username, string $password, ?string $wireguardPrivateKey = null): array
+    public function updateWireguards(string $host, string $username, string $password, ?string $wireguardPrivateKey = null, ?int $ownerId = null): array
     {
         $ssh = $this->connectSsh($host, $username, $password, 'اتصال SSH ناموفق بود (احتمالاً پسورد اشتباه است یا سرور در دسترس نیست).');
 
-        $configs = $wireguardPrivateKey !== null ? WireguardLocation::all() : collect();
+        $configs = $wireguardPrivateKey !== null && $ownerId !== null ? WireguardLocation::ownedBy($ownerId)->get() : collect();
 
         if ($configs->isNotEmpty()) {
             $this->ensureWireguardTools($ssh);

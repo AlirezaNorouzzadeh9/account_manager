@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\Panel;
 use App\Services\CheckHost\CheckHostClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -15,7 +16,7 @@ use Throwable;
 /**
  * Part of the periodic health check (see the servers:check-pings command,
  * run every 10 minutes via the server's crontab): pings one server from Iran
- * and, ONLY if a node fails, alerts every admin with a "🔄 تغییر سرور"
+ * and, ONLY if a node fails, alerts that panel's owner with a "🔄 تغییر سرور"
  * button. A clean or inconclusive result stays silent on purpose — this is a
  * "tell me when something's wrong" check, not a status report.
  */
@@ -60,6 +61,12 @@ class CheckServerPingJob implements ShouldQueue
             return;
         }
 
+        $ownerId = Panel::find($this->panelId)?->created_by;
+
+        if ($ownerId === null) {
+            return;
+        }
+
         $message = "⚠️ پینگ سرور «{$this->hostname}» ({$this->ip}) از ایران مشکل دارد:\n".
             $checkHost->formatResult($result);
 
@@ -67,8 +74,6 @@ class CheckServerPingJob implements ShouldQueue
             InlineKeyboardButton::make('🔄 تغییر سرور', callback_data: "replace_server:{$this->panelId}:{$this->serverId}")
         );
 
-        foreach (config('bot.admins') as $adminId) {
-            $bot->sendMessage($message, chat_id: (int) $adminId, reply_markup: $keyboard);
-        }
+        $bot->sendMessage($message, chat_id: $ownerId, reply_markup: $keyboard);
     }
 }

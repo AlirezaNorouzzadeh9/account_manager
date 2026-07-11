@@ -9,6 +9,7 @@ use App\Services\Providers\ServerProvisioningService;
 use App\Telegram\Support\Cancellable;
 use App\Telegram\Support\CancellableTextStep;
 use App\Telegram\Support\EditsInPlace;
+use App\Telegram\Support\FiltersUbuntuImages;
 use App\Telegram\Support\FormatsServerSize;
 use App\Telegram\Support\GridButtons;
 use SergiX44\Nutgram\Conversations\InlineMenu;
@@ -20,6 +21,7 @@ class CreateServerConversation extends InlineMenu
     use Cancellable;
     use CancellableTextStep;
     use EditsInPlace;
+    use FiltersUbuntuImages;
     use FormatsServerSize;
     use GridButtons;
 
@@ -39,7 +41,7 @@ class CreateServerConversation extends InlineMenu
     {
         $this->editInPlaceFromCallback($bot);
 
-        $panels = Panel::query()->active()->get();
+        $panels = Panel::query()->ownedBy($bot->userId())->active()->get();
 
         $this->clearButtons();
 
@@ -74,7 +76,7 @@ class CreateServerConversation extends InlineMenu
 
     protected function showRegions(Nutgram $bot): void
     {
-        $panel = Panel::findOrFail($this->panelId);
+        $panel = Panel::ownedBy($bot->userId())->findOrFail($this->panelId);
 
         try {
             $regions = ProviderManager::forPanel($panel)->regions();
@@ -112,7 +114,7 @@ class CreateServerConversation extends InlineMenu
 
     protected function showSizes(Nutgram $bot): void
     {
-        $panel = Panel::findOrFail($this->panelId);
+        $panel = Panel::ownedBy($bot->userId())->findOrFail($this->panelId);
 
         try {
             $sizes = ProviderManager::forPanel($panel)->sizes($this->region);
@@ -157,7 +159,7 @@ class CreateServerConversation extends InlineMenu
 
     protected function showImages(Nutgram $bot): void
     {
-        $panel = Panel::findOrFail($this->panelId);
+        $panel = Panel::ownedBy($bot->userId())->findOrFail($this->panelId);
 
         try {
             $images = ProviderManager::forPanel($panel)->images('distribution');
@@ -167,6 +169,7 @@ class CreateServerConversation extends InlineMenu
             return;
         }
 
+        $images = $this->onlyUbuntu($images);
         $this->imageLabels = array_column($images, 'label', 'slug');
 
         $this->clearButtons();
@@ -241,7 +244,7 @@ class CreateServerConversation extends InlineMenu
 
     public function confirm(Nutgram $bot): void
     {
-        $panel = Panel::findOrFail($this->panelId);
+        $panel = Panel::ownedBy($bot->userId())->findOrFail($this->panelId);
 
         try {
             app(ServerProvisioningService::class)->create(

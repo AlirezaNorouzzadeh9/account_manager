@@ -47,7 +47,7 @@ class AddWireguardProfileConversation extends Conversation
             return;
         }
 
-        if (WireguardProfile::where('name', $name)->exists()) {
+        if (WireguardProfile::ownedBy($bot->userId())->where('name', $name)->exists()) {
             $bot->sendMessage('پروفایلی با این نام از قبل وجود دارد. نام دیگری بفرستید:', reply_markup: $this->backButton());
             return;
         }
@@ -75,6 +75,7 @@ class AddWireguardProfileConversation extends Conversation
         $profile = WireguardProfile::create([
             'name' => $this->name,
             'private_key' => $key,
+            'created_by' => $bot->userId(),
         ]);
 
         $this->end();

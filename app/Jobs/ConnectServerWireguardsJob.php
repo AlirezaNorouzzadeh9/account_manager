@@ -30,13 +30,14 @@ class ConnectServerWireguardsJob implements ShouldQueue
         protected string $password,
         protected string $wireguardPrivateKey,
         protected int $chatId,
+        protected ?int $ownerId = null,
     ) {
     }
 
     public function handle(Nutgram $bot, PasarguardNodeInstaller $installer): void
     {
         try {
-            $result = $installer->updateWireguards($this->host, $this->username, $this->password, $this->wireguardPrivateKey);
+            $result = $installer->updateWireguards($this->host, $this->username, $this->password, $this->wireguardPrivateKey, $this->ownerId);
         } catch (RuntimeException $e) {
             $bot->sendMessage("❌ اتصال به سرور {$this->host} ناموفق بود:\n{$e->getMessage()}", chat_id: $this->chatId);
 

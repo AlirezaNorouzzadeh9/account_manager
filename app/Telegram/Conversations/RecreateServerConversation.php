@@ -54,7 +54,7 @@ class RecreateServerConversation extends InlineMenu
 
     public function confirmRecreate(Nutgram $bot): void
     {
-        $panel = Panel::find($this->panelId);
+        $panel = Panel::ownedBy($bot->userId())->find($this->panelId);
         $secret = ServerSecret::where('panel_id', $this->panelId)
             ->where('provider_server_id', $this->serverId)
             ->first();

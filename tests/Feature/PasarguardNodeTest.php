@@ -31,6 +31,7 @@ class PasarguardNodeTest extends TestCase
             'api_token' => 'fake-token',
             'meta' => ['email' => 'owner@example.com'],
             'is_active' => true,
+            'created_by' => 555,
         ]);
 
         $droplet = [
@@ -82,6 +83,7 @@ class PasarguardNodeTest extends TestCase
             'api_token' => 'fake-token',
             'meta' => ['email' => 'owner@example.com'],
             'is_active' => true,
+            'created_by' => 555,
         ]);
 
         $droplet = [
@@ -131,6 +133,7 @@ class PasarguardNodeTest extends TestCase
             'api_token' => 'fake-token',
             'meta' => [],
             'is_active' => true,
+            'created_by' => 555,
         ]);
 
         config(['bot.admins' => ['555']]);
@@ -162,9 +165,10 @@ class PasarguardNodeTest extends TestCase
             'api_token' => 'fake-token',
             'meta' => [],
             'is_active' => true,
+            'created_by' => 555,
         ]);
 
-        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-private-key']);
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-private-key', 'created_by' => 555]);
 
         ServerSecret::create([
             'panel_id' => $panel->id,
@@ -190,7 +194,8 @@ class PasarguardNodeTest extends TestCase
             ->once()
             // No profile name passed — the manual install always uses a
             // per-IP cert/registration now, never the DNS-backed domain one.
-            ->with('8.8.8.8', 'root', 'already-known-password', 'fake-private-key')
+            // ownerId=555 flows through from the panel's created_by.
+            ->with('8.8.8.8', 'root', 'already-known-password', 'fake-private-key', null, 555)
             ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => 'fake-cert-pem', 'domain' => null, 'dns_warning' => null]);
 
         config(['bot.admins' => ['555']]);
@@ -229,9 +234,10 @@ class PasarguardNodeTest extends TestCase
             'api_token' => 'fake-token',
             'meta' => [],
             'is_active' => true,
+            'created_by' => 555,
         ]);
 
-        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-private-key']);
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-private-key', 'created_by' => 555]);
 
         ServerSecret::create([
             'panel_id' => $panel->id,
@@ -365,6 +371,7 @@ class PasarguardNodeTest extends TestCase
             'name' => 'it',
             'ip' => '1.2.3.4',
             'server_public_key' => 'fake-pub',
+            'created_by' => 555,
         ]);
 
         $panel = Panel::create([
@@ -373,6 +380,7 @@ class PasarguardNodeTest extends TestCase
             'api_token' => 'fake-token',
             'meta' => ['email' => 'owner@example.com'],
             'is_active' => true,
+            'created_by' => 555,
         ]);
 
         $droplet = [

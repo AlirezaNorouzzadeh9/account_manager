@@ -25,6 +25,13 @@ class SetWireguardLocationCountryConversation extends Conversation
 
     public function start(Nutgram $bot, int $locationId): void
     {
+        if (! WireguardLocation::ownedBy($bot->userId())->whereKey($locationId)->exists()) {
+            $bot->sendMessage('⛔️ این لوکیشن متعلق به شما نیست.');
+            $this->end();
+
+            return;
+        }
+
         $this->locationId = $locationId;
 
         $bot->sendMessage(
@@ -59,7 +66,7 @@ class SetWireguardLocationCountryConversation extends Conversation
             return;
         }
 
-        WireguardLocation::whereKey($this->locationId)->update(['country' => $country]);
+        WireguardLocation::ownedBy($bot->userId())->whereKey($this->locationId)->update(['country' => $country]);
 
         $bot->sendMessage($country === null ? '✅ کشور حذف شد.' : "✅ کشور به «{$country}» تنظیم شد.");
         $this->end();

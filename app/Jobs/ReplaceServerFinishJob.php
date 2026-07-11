@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\Panel;
 use App\Models\ServerSecret;
 use App\Models\WireguardProfile;
 use App\Services\Pasarguard\PasarguardNodeInstaller;
@@ -60,6 +61,7 @@ class ReplaceServerFinishJob implements ShouldQueue
         // (e.g. for a later manual "🔄 بروزرسانی وایرگاردها").
         $newSecret->update(['wireguard_profile_id' => $this->wireguardProfileId]);
         $profile = $newSecret->wireguardProfile;
+        $panel = Panel::find($this->oldPanelId);
 
         $succeeded = false;
         $cert = null;
@@ -68,7 +70,7 @@ class ReplaceServerFinishJob implements ShouldQueue
             // No profile name/domain passed: every node this flow creates
             // gets its own per-IP cert and its own fresh panel registration
             // (see registerNewNode()) instead of sharing a stable domain.
-            $result = $installer->install($this->newIp, 'root', $newSecret->root_password, $profile?->private_key);
+            $result = $installer->install($this->newIp, 'root', $newSecret->root_password, $profile?->private_key, ownerId: $panel?->created_by);
             $statusMessage = ($result['success'] ? '✅ ' : '⚠️ ').$result['message'];
             $succeeded = $result['success'];
             $cert = $result['cert'] ?? null;

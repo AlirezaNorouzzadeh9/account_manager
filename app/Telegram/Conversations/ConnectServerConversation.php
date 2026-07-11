@@ -104,7 +104,7 @@ class ConnectServerConversation extends InlineMenu
 
     protected function showProfiles(Nutgram $bot): void
     {
-        $profiles = WireguardProfile::orderBy('name')->get();
+        $profiles = WireguardProfile::ownedBy($bot->userId())->orderBy('name')->get();
 
         if ($profiles->isEmpty()) {
             $bot->sendMessage('هیچ پروفایل وایرگاردی ثبت نشده. ابتدا از ⚙️ تنظیمات یک پروفایل اضافه کنید.');
@@ -131,7 +131,7 @@ class ConnectServerConversation extends InlineMenu
 
     public function chooseProfile(Nutgram $bot, string $data): void
     {
-        $profile = WireguardProfile::find((int) $data);
+        $profile = WireguardProfile::ownedBy($bot->userId())->find((int) $data);
 
         if (! $profile) {
             $this->showProfiles($bot);
@@ -156,7 +156,7 @@ class ConnectServerConversation extends InlineMenu
 
     public function confirm(Nutgram $bot): void
     {
-        $profile = WireguardProfile::find($this->profileId);
+        $profile = WireguardProfile::ownedBy($bot->userId())->find($this->profileId);
 
         if (! $profile) {
             $this->closeMenu('❌ این پروفایل دیگر وجود ندارد.');
@@ -171,6 +171,7 @@ class ConnectServerConversation extends InlineMenu
             $this->password,
             $profile->private_key,
             $bot->chatId(),
+            $bot->userId(),
         );
 
         $this->closeMenu(

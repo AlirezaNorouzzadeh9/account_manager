@@ -23,8 +23,12 @@ class WireguardProfileMenu extends InlineMenu
 
     protected ?int $currentProfileId = null;
 
+    /** The Telegram user this conversation instance belongs to — set once in start(). */
+    protected ?int $ownerId = null;
+
     public function start(Nutgram $bot, ?int $focusProfileId = null, bool $justCreated = false): void
     {
+        $this->ownerId = $bot->userId();
         $this->editInPlaceFromCallback($bot);
 
         if ($focusProfileId !== null) {
@@ -33,7 +37,7 @@ class WireguardProfileMenu extends InlineMenu
             return;
         }
 
-        $profiles = WireguardProfile::orderBy('name')->get();
+        $profiles = WireguardProfile::ownedBy($this->ownerId)->orderBy('name')->get();
 
         $intro = "🪪 پروفایل‌های وایرگارد — هر پروفایل یک هویت (PrivateKey) است که موقع فعال‌سازی وایرگارد روی هر سرور انتخاب می‌شود\n".
             "➕ افزودن پروفایل — یک پروفایل جدید بسازید\n\n";
@@ -72,7 +76,7 @@ class WireguardProfileMenu extends InlineMenu
 
     public function showProfile(Nutgram $bot, string $data, bool $justCreated = false): void
     {
-        $profile = WireguardProfile::find((int) $data);
+        $profile = WireguardProfile::ownedBy($this->ownerId)->find((int) $data);
 
         if (! $profile) {
             $this->start($bot);
@@ -118,7 +122,7 @@ class WireguardProfileMenu extends InlineMenu
 
     public function revealPrivateKey(Nutgram $bot): void
     {
-        $profile = WireguardProfile::find($this->currentProfileId);
+        $profile = WireguardProfile::ownedBy($this->ownerId)->find($this->currentProfileId);
 
         if ($profile) {
             $bot->sendMessage("`{$profile->private_key}`", parse_mode: 'Markdown');
@@ -134,7 +138,7 @@ class WireguardProfileMenu extends InlineMenu
 
     public function confirmDeleteProfile(Nutgram $bot): void
     {
-        $profile = WireguardProfile::find($this->currentProfileId);
+        $profile = WireguardProfile::ownedBy($this->ownerId)->find($this->currentProfileId);
 
         if (! $profile) {
             $this->start($bot);
@@ -157,7 +161,7 @@ class WireguardProfileMenu extends InlineMenu
 
     public function doDeleteProfile(Nutgram $bot): void
     {
-        WireguardProfile::whereKey($this->currentProfileId)->delete();
+        WireguardProfile::ownedBy($this->ownerId)->whereKey($this->currentProfileId)->delete();
         $this->setCallbackQueryOptions(['text' => 'پروفایل حذف شد.']);
         $this->start($bot);
     }

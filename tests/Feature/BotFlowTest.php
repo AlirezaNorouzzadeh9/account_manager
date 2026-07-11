@@ -129,6 +129,7 @@ class BotFlowTest extends TestCase
             'api_token' => 'fake-token',
             'meta' => ['email' => 'owner@example.com'],
             'is_active' => true,
+            'created_by' => 555,
         ]);
 
         $bot = $this->bot();
@@ -153,6 +154,7 @@ class BotFlowTest extends TestCase
             'api_token' => 'fake-token',
             'meta' => ['email' => 'owner@example.com'],
             'is_active' => true,
+            'created_by' => 555,
         ]);
 
         Http::fake([
@@ -199,7 +201,7 @@ class BotFlowTest extends TestCase
     {
         Queue::fake();
 
-        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-private-key']);
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-private-key', 'created_by' => 555]);
 
         $bot = $this->bot();
         $bot->willStartConversation();

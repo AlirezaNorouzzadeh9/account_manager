@@ -13,6 +13,7 @@ use App\Services\Providers\ProviderException;
 use App\Services\Providers\ProviderManager;
 use App\Telegram\Support\Cancellable;
 use App\Telegram\Support\EditsInPlace;
+use App\Telegram\Support\FiltersUbuntuImages;
 use App\Telegram\Support\FormatsRtlText;
 use App\Telegram\Support\FormatsServerSize;
 use App\Telegram\Support\GridButtons;
@@ -24,6 +25,7 @@ class ServerListMenu extends InlineMenu
 {
     use Cancellable;
     use EditsInPlace;
+    use FiltersUbuntuImages;
     use FormatsRtlText;
     use FormatsServerSize;
     use GridButtons;
@@ -33,12 +35,15 @@ class ServerListMenu extends InlineMenu
     protected int|string|null $serverId = null;
     protected ?string $pendingImage = null;
 
+    /** The Telegram user this conversation instance belongs to — set once in start(), used by panel() as the ownership check for every screen/action below it. */
+    protected ?int $ownerId = null;
+
     /** 'none' or a numeric WireguardProfile id, chosen right before install/update-wireguards. */
     protected ?string $pendingProfile = null;
 
     protected function panel(): Panel
     {
-        return Panel::findOrFail($this->panelId);
+        return Panel::ownedBy($this->ownerId)->findOrFail($this->panelId);
     }
 
     protected function client(): ProviderClient
@@ -53,6 +58,8 @@ class ServerListMenu extends InlineMenu
      */
     public function start(Nutgram $bot, ?int $jumpPanelId = null, ?string $jumpServerId = null): void
     {
+        $this->ownerId = $bot->userId();
+
         if ($jumpPanelId !== null && $jumpServerId !== null) {
             $this->panelId = $jumpPanelId;
             $this->serverId = $jumpServerId;
@@ -62,7 +69,7 @@ class ServerListMenu extends InlineMenu
 
         $this->editInPlaceFromCallback($bot);
 
-        $panels = Panel::query()->active()->get();
+        $panels = Panel::query()->ownedBy($this->ownerId)->active()->get();
 
         $this->clearButtons();
 
@@ -360,7 +367,7 @@ class ServerListMenu extends InlineMenu
     public function rebuildMenu(Nutgram $bot): void
     {
         try {
-            $images = $this->client()->images('distribution');
+            $images = $this->onlyUbuntu($this->client()->images('distribution'));
         } catch (ProviderException $e) {
             $this->setCallbackQueryOptions(['text' => "خطا: {$e->getMessage()}", 'show_alert' => true]);
             return;
@@ -484,7 +491,7 @@ class ServerListMenu extends InlineMenu
      */
     protected function addProfileButtons(string $callback): void
     {
-        foreach (WireguardProfile::orderBy('name')->get() as $profile) {
+        foreach (WireguardProfile::ownedBy($this->ownerId)->orderBy('name')->get() as $profile) {
             $this->addButtonRow(InlineKeyboardButton::make(
                 "🪪 {$profile->name}",
                 callback_data: "{$profile->id}@{$callback}"

@@ -23,6 +23,13 @@ class SetWireguardProfileCoreIdConversation extends Conversation
 
     public function start(Nutgram $bot, int $profileId): void
     {
+        if (! WireguardProfile::ownedBy($bot->userId())->whereKey($profileId)->exists()) {
+            $bot->sendMessage('⛔️ این پروفایل متعلق به شما نیست.');
+            $this->end();
+
+            return;
+        }
+
         $this->profileId = $profileId;
 
         $bot->sendMessage(
@@ -52,7 +59,7 @@ class SetWireguardProfileCoreIdConversation extends Conversation
 
         $coreId = (int) $text;
 
-        WireguardProfile::whereKey($this->profileId)->update(['core_id' => $coreId === 0 ? null : $coreId]);
+        WireguardProfile::ownedBy($bot->userId())->whereKey($this->profileId)->update(['core_id' => $coreId === 0 ? null : $coreId]);
 
         $bot->sendMessage($coreId === 0 ? '✅ core_id حذف شد.' : "✅ core_id به {$coreId} تنظیم شد.");
         $this->end();

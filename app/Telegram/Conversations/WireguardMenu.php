@@ -24,8 +24,12 @@ class WireguardMenu extends InlineMenu
 
     protected ?int $currentLocationId = null;
 
+    /** The Telegram user this conversation instance belongs to — set once in start(). */
+    protected ?int $ownerId = null;
+
     public function start(Nutgram $bot, ?int $focusLocationId = null, bool $justCreated = false): void
     {
+        $this->ownerId = $bot->userId();
         $this->editInPlaceFromCallback($bot);
 
         if ($focusLocationId !== null) {
@@ -34,7 +38,7 @@ class WireguardMenu extends InlineMenu
             return;
         }
 
-        $locations = WireguardLocation::orderBy('name')->get();
+        $locations = WireguardLocation::ownedBy($this->ownerId)->orderBy('name')->get();
 
         $intro = "🔒 لوکیشن‌های وایرگارد — روی هر سروری که وایرگارد فعال شود، همه‌ی این‌ها با هم فعال می‌شوند\n".
             "➕ افزودن لوکیشن — یک لوکیشن جدید اضافه کنید\n\n";
@@ -73,7 +77,7 @@ class WireguardMenu extends InlineMenu
 
     public function showLocation(Nutgram $bot, string $data, bool $justCreated = false): void
     {
-        $location = WireguardLocation::find((int) $data);
+        $location = WireguardLocation::ownedBy($this->ownerId)->find((int) $data);
 
         if (! $location) {
             $this->start($bot);
@@ -122,7 +126,7 @@ class WireguardMenu extends InlineMenu
 
     public function confirmDeleteLocation(Nutgram $bot): void
     {
-        $location = WireguardLocation::find($this->currentLocationId);
+        $location = WireguardLocation::ownedBy($this->ownerId)->find($this->currentLocationId);
 
         if (! $location) {
             $this->start($bot);
@@ -145,7 +149,7 @@ class WireguardMenu extends InlineMenu
 
     public function doDeleteLocation(Nutgram $bot): void
     {
-        WireguardLocation::whereKey($this->currentLocationId)->delete();
+        WireguardLocation::ownedBy($this->ownerId)->whereKey($this->currentLocationId)->delete();
         $this->setCallbackQueryOptions(['text' => 'لوکیشن حذف شد.']);
         $this->start($bot);
     }

@@ -72,7 +72,7 @@ class InstallPasarguardNodeJob implements ShouldQueue
             // by a DNS-backed domain (see PasarguardNodeInstaller — a domain
             // cert's SAN only covers that domain, so registering it under a
             // plain IP would fail the panel's own certificate check).
-            $result = $installer->install($ip, 'root', $secret->root_password, $profile?->private_key);
+            $result = $installer->install($ip, 'root', $secret->root_password, $profile?->private_key, ownerId: $panel->created_by);
         } catch (RuntimeException $e) {
             if ($this->attempts() < $this->tries) {
                 $this->release(15);

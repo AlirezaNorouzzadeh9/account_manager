@@ -65,6 +65,7 @@ class BackNavigationTest extends TestCase
             'api_token' => 'fake-token',
             'meta' => [],
             'is_active' => true,
+            'created_by' => 555,
         ]);
 
         \Illuminate\Support\Facades\Http::fake([

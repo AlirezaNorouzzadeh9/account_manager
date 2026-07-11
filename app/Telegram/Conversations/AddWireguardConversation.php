@@ -38,7 +38,7 @@ class AddWireguardConversation extends Conversation
             return;
         }
 
-        if (WireguardLocation::where('name', $name)->exists()) {
+        if (WireguardLocation::ownedBy($bot->userId())->where('name', $name)->exists()) {
             $bot->sendMessage('لوکیشنی با این نام از قبل وجود دارد. نام دیگری بفرستید:', reply_markup: $this->backButton());
             return;
         }
@@ -118,6 +118,7 @@ class AddWireguardConversation extends Conversation
             'country' => $this->country,
             'ip' => $this->ip,
             'server_public_key' => $key,
+            'created_by' => $bot->userId(),
         ]);
 
         $this->end();

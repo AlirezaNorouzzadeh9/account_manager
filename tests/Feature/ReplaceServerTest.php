@@ -43,6 +43,7 @@ class ReplaceServerTest extends TestCase
             'api_token' => 'fake-token',
             'meta' => [],
             'is_active' => true,
+            'created_by' => 555,
         ]);
 
         $secret = ServerSecret::create([
@@ -352,7 +353,7 @@ class ReplaceServerTest extends TestCase
         Queue::fake();
 
         [$panel, ] = $this->makePanelAndSecret(111);
-        $profile = WireguardProfile::create(['name' => 'Profile 1', 'private_key' => 'fake-private-key']);
+        $profile = WireguardProfile::create(['name' => 'Profile 1', 'private_key' => 'fake-private-key', 'created_by' => 555]);
 
         $newSecret = ServerSecret::create([
             'panel_id' => $panel->id,
@@ -367,7 +368,7 @@ class ReplaceServerTest extends TestCase
         $installer = \Mockery::mock(PasarguardNodeInstaller::class);
         $installer->shouldReceive('install')
             ->once()
-            ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key')
+            ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key', null, 555)
             ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => 'fake-cert', 'domain' => null, 'dns_warning' => null]);
         $installer->shouldReceive('syncProfileDns')->once()->with('Profile 1', '9.9.9.9')->andReturn(null);
         $this->app->instance(PasarguardNodeInstaller::class, $installer);
@@ -409,7 +410,7 @@ class ReplaceServerTest extends TestCase
         ]);
 
         [$panel, ] = $this->makePanelAndSecret(111);
-        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-private-key', 'core_id' => 268]);
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-private-key', 'core_id' => 268, 'created_by' => 555]);
 
         $newSecret = ServerSecret::create([
             'panel_id' => $panel->id,
@@ -424,7 +425,7 @@ class ReplaceServerTest extends TestCase
         $installer = \Mockery::mock(PasarguardNodeInstaller::class);
         $installer->shouldReceive('install')
             ->once()
-            ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key')
+            ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key', null, 555)
             ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => 'fake-cert-pem', 'domain' => null, 'dns_warning' => null]);
         $installer->shouldReceive('syncProfileDns')
             ->once()
@@ -473,7 +474,7 @@ class ReplaceServerTest extends TestCase
         Queue::fake();
 
         [$panel, ] = $this->makePanelAndSecret(111);
-        $profile = WireguardProfile::create(['name' => 'Profile 1', 'private_key' => 'fake-private-key']);
+        $profile = WireguardProfile::create(['name' => 'Profile 1', 'private_key' => 'fake-private-key', 'created_by' => 555]);
 
         ServerSecret::create([
             'panel_id' => $panel->id,
@@ -488,7 +489,7 @@ class ReplaceServerTest extends TestCase
         $installer = \Mockery::mock(PasarguardNodeInstaller::class);
         $installer->shouldReceive('install')
             ->once()
-            ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key')
+            ->with('9.9.9.9', 'root', 'new-password', 'fake-private-key', null, 555)
             ->andReturn(['success' => false, 'message' => 'نصب نود ناموفق بود.', 'log' => 'boom', 'cert' => '', 'domain' => null, 'dns_warning' => null]);
         $this->app->instance(PasarguardNodeInstaller::class, $installer);
 
@@ -607,9 +608,9 @@ class ReplaceServerTest extends TestCase
             && str_contains((string) $request->url(), '/droplets/111'));
     }
 
-    public function test_check_server_ping_job_alerts_admins_only_when_ping_fails(): void
+    public function test_check_server_ping_job_alerts_only_the_panels_owner_when_ping_fails(): void
     {
-        config(['bot.admins' => ['555']]);
+        [$panel, ] = $this->makePanelAndSecret(111);
 
         Http::fake([
             'check-host.net/check-ping*' => Http::response(['ok' => 1, 'request_id' => 'req-xyz']),
@@ -621,7 +622,7 @@ class ReplaceServerTest extends TestCase
         /** @var FakeNutgram $bot */
         $bot = $this->app->make(Nutgram::class);
 
-        $job = new CheckServerPingJob(1, '111', '9.9.9.9', 'srv-old');
+        $job = new CheckServerPingJob($panel->id, '111', '9.9.9.9', 'srv-old');
         $job->handle(new CheckHostClient(), $bot);
 
         $history = $bot->getRequestHistory();
@@ -630,7 +631,7 @@ class ReplaceServerTest extends TestCase
         $body = json_decode((string) $request->getBody(), true);
 
         $this->assertSame(555, $body['chat_id']);
-        $this->assertStringContainsString('replace_server:1:111', json_encode($body['reply_markup']));
+        $this->assertStringContainsString("replace_server:{$panel->id}:111", json_encode($body['reply_markup']));
     }
 
     public function test_check_server_ping_job_stays_silent_when_ping_is_clean(): void

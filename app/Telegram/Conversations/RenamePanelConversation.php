@@ -40,7 +40,7 @@ class RenamePanelConversation extends Conversation
             return;
         }
 
-        Panel::whereKey($this->panelId)->update(['name' => $name]);
+        Panel::ownedBy($bot->userId())->whereKey($this->panelId)->update(['name' => $name]);
 
         $this->end();
         PanelsMenu::begin($bot, $bot->userId(), $bot->chatId(), [$this->panelId]);

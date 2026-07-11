@@ -28,7 +28,7 @@ class PanelsMenu extends InlineMenu
             return;
         }
 
-        $panels = Panel::query()->latest()->get();
+        $panels = Panel::query()->ownedBy($bot->userId())->latest()->get();
 
         $intro = "🖥 پنل‌های سرویس‌دهنده — هر پنل یک اکانت ارائه‌دهنده (مثل DigitalOcean) است که سرورها رویش ساخته می‌شوند\n".
             "➕ افزودن پنل — یک پنل جدید اضافه کنید\n\n";
@@ -62,7 +62,7 @@ class PanelsMenu extends InlineMenu
 
     public function showPanel(Nutgram $bot, string $data, bool $justCreated = false): void
     {
-        $panel = Panel::find((int) $data);
+        $panel = Panel::ownedBy($bot->userId())->find((int) $data);
 
         if (! $panel) {
             $this->setCallbackQueryOptions(['text' => 'این پنل دیگر وجود ندارد.', 'show_alert' => true]);
@@ -94,7 +94,7 @@ class PanelsMenu extends InlineMenu
 
     public function confirmDelete(Nutgram $bot, string $data): void
     {
-        $panel = Panel::find((int) $data);
+        $panel = Panel::ownedBy($bot->userId())->find((int) $data);
 
         if (! $panel) {
             $this->start($bot);
@@ -115,7 +115,7 @@ class PanelsMenu extends InlineMenu
 
     public function doDelete(Nutgram $bot, string $data): void
     {
-        Panel::whereKey((int) $data)->delete();
+        Panel::ownedBy($bot->userId())->whereKey((int) $data)->delete();
         $this->setCallbackQueryOptions(['text' => 'پنل حذف شد.']);
         $this->start($bot);
     }

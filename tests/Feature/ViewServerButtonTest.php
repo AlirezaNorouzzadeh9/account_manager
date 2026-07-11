@@ -23,6 +23,7 @@ class ViewServerButtonTest extends TestCase
             'api_token' => 'fake-token',
             'meta' => ['email' => 'owner@example.com'],
             'is_active' => true,
+            'created_by' => 555,
         ]);
 
         $droplet = [

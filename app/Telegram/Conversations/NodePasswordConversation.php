@@ -4,6 +4,7 @@ namespace App\Telegram\Conversations;
 
 use App\Jobs\InstallPasarguardNodeJob;
 use App\Jobs\UpdateWireguardsJob;
+use App\Models\Panel;
 use App\Models\ServerSecret;
 use App\Telegram\Support\Cancellable;
 use App\Telegram\Support\CancellableTextStep;
@@ -34,6 +35,13 @@ class NodePasswordConversation extends Conversation
 
     public function start(Nutgram $bot, int $panelId, string $serverId, string $action = 'install', ?string $profile = null): void
     {
+        if (! Panel::ownedBy($bot->userId())->whereKey($panelId)->exists()) {
+            $bot->sendMessage('⛔️ این پنل متعلق به شما نیست.');
+            $this->end();
+
+            return;
+        }
+
         $this->panelId = $panelId;
         $this->serverId = $serverId;
         $this->action = $action;

@@ -11,7 +11,14 @@ class WireguardLocation extends Model
         'country',
         'ip',
         'server_public_key',
+        'created_by',
     ];
+
+    /** Every location belongs to exactly one Telegram user — no sharing between users. */
+    public function scopeOwnedBy($query, int|string $telegramId)
+    {
+        return $query->where('created_by', $telegramId);
+    }
 
     /**
      * Flag emoji derived from `country` (a 2-letter ISO code, e.g. "DE") —

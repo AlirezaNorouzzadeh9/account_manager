@@ -27,4 +27,10 @@ class Panel extends Model
     {
         return $query->where('is_active', true);
     }
+
+    /** Every panel belongs to exactly one Telegram user — no sharing between users. */
+    public function scopeOwnedBy($query, int|string $telegramId)
+    {
+        return $query->where('created_by', $telegramId);
+    }
 }
