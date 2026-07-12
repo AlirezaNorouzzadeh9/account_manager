@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Jobs\PollProviderActionJob;
 use App\Jobs\ServerPingCheckJob;
 use App\Models\Panel;
+use App\Models\ServerSecret;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -182,5 +183,76 @@ class ServerListMenuTest extends TestCase
 
             return $ref->getValue($job) === '1.2.3.4';
         });
+    }
+
+    public function test_rebuild_persists_the_new_root_password_through_the_encrypted_cast(): void
+    {
+        Queue::fake();
+
+        $panel = Panel::create([
+            'name' => 'My Linode Panel',
+            'provider' => 'linode',
+            'api_token' => 'fake-token',
+            'meta' => [],
+            'is_active' => true,
+            'created_by' => 555,
+        ]);
+
+        $secret = ServerSecret::create([
+            'panel_id' => $panel->id,
+            'provider_server_id' => '42',
+            'root_password' => 'old-plaintext-password',
+        ]);
+
+        $instance = [
+            'id' => 42,
+            'label' => 'sweden',
+            'status' => 'running',
+            'ipv4' => ['172.234.111.99'],
+            'region' => 'se-sto',
+            'type' => 'g6-dedicated-2',
+            'image' => 'linode/ubuntu22.04',
+        ];
+
+        Http::fake([
+            'api.linode.com/v4/linode/instances?*' => Http::response(['data' => [$instance], 'pages' => 1]),
+            'api.linode.com/v4/linode/instances/42' => Http::response($instance),
+            'api.linode.com/v4/linode/instances/42/ips' => Http::response(['ipv4' => ['public' => []]]),
+            'api.linode.com/v4/linode/types/g6-dedicated-2' => Http::response([]),
+            'api.linode.com/v4/images' => Http::response([
+                'data' => [['id' => 'linode/ubuntu22.04', 'label' => 'Ubuntu 22.04 LTS']],
+            ]),
+            'api.linode.com/v4/linode/instances/42/rebuild' => Http::response(['id' => 42]),
+        ]);
+
+        config(['bot.admins' => ['555']]);
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+        $bot->setCommonUser(User::make(id: 555, is_bot: false, first_name: 'Tester'));
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('server:list')->reply();
+        $bot->hearCallbackQueryData("{$panel->id}")->reply();
+        $bot->hearCallbackQueryData('42')->reply();
+        $bot->hearCallbackQueryData('x@@@@')->reply(); // 5th grid button = rebuildMenu
+        $bot->hearCallbackQueryData('linode/ubuntu22.04')->reply(); // confirmRebuild
+        $bot->hearCallbackQueryData('yes')->reply(); // doRebuild
+
+        $stored = $secret->fresh();
+        $raw = $stored->getRawOriginal('root_password');
+        $envelope = json_decode(base64_decode($raw), true);
+
+        // A mass update() bypasses the 'encrypted' cast and writes the
+        // plaintext straight to the column — asserting the raw column is a
+        // valid Laravel encryption envelope (not the plaintext itself) is
+        // what actually catches that regression.
+        $this->assertIsArray($envelope);
+        $this->assertArrayHasKey('iv', $envelope);
+        $this->assertArrayHasKey('value', $envelope);
+        $this->assertArrayHasKey('mac', $envelope);
+
+        $this->assertSame(20, strlen($stored->root_password));
+        $this->assertNotSame('old-plaintext-password', $stored->root_password);
     }
 }

@@ -269,14 +269,18 @@ class ServerListMenu extends InlineMenu
 
         $this->setCallbackQueryOptions(['text' => $ack]);
 
-        // Unlike DigitalOcean, a Linode rebuild needs a fresh root password
-        // set in the same request (it has no other way to preserve access) —
-        // LinodeClient::rebuild() generates one and returns it here so it
-        // doesn't go stale in our own records.
+        // Unlike DigitalOcean, a Linode/Vultr rebuild needs a fresh root
+        // password set in the same request (it has no other way to preserve
+        // access) — the client generates one and returns it here so it
+        // doesn't go stale in our own records. Saved via a hydrated model
+        // (not a query-builder mass update) so the 'encrypted' cast actually
+        // runs — a mass update() bypasses casts entirely and would silently
+        // persist the password in plaintext.
         if (! empty($action['root_password'])) {
             ServerSecret::where('panel_id', $this->panelId)
                 ->where('provider_server_id', $this->serverId)
-                ->update(['root_password' => $action['root_password']]);
+                ->first()
+                ?->update(['root_password' => $action['root_password']]);
         }
 
         if (! empty($action['id'])) {
