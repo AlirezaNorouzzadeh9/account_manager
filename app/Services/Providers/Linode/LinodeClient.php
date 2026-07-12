@@ -335,21 +335,24 @@ class LinodeClient implements ProviderClient
 
     public function powerOn(int|string $id): array
     {
-        $this->handle($this->http()->post("/linode/instances/{$id}/boot"));
+        // An empty PHP array encodes to a JSON array ("[]"), but Linode's API
+        // requires a JSON object body — passing (object) [] instead ("{}")
+        // avoids its "invalid json" rejection on these bodyless actions.
+        $this->handle($this->http()->post("/linode/instances/{$id}/boot", (object) []));
 
         return ['id' => $id];
     }
 
     public function powerOff(int|string $id): array
     {
-        $this->handle($this->http()->post("/linode/instances/{$id}/shutdown"));
+        $this->handle($this->http()->post("/linode/instances/{$id}/shutdown", (object) []));
 
         return ['id' => $id];
     }
 
     public function reboot(int|string $id): array
     {
-        $this->handle($this->http()->post("/linode/instances/{$id}/reboot"));
+        $this->handle($this->http()->post("/linode/instances/{$id}/reboot", (object) []));
 
         return ['id' => $id];
     }

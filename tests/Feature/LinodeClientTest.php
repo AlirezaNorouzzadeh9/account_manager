@@ -353,4 +353,26 @@ class LinodeClientTest extends TestCase
 
         $this->client()->allocateReservedIp('us-east');
     }
+
+    /**
+     * Linode's API rejects a JSON array ("[]") body with an "invalid json"
+     * error — these bodyless actions must send a JSON object ("{}") instead,
+     * which a plain empty PHP array does NOT encode to.
+     */
+    public function test_power_actions_send_a_json_object_body_not_an_array(): void
+    {
+        Http::fake([
+            'api.linode.com/v4/linode/instances/999/boot' => Http::response([]),
+            'api.linode.com/v4/linode/instances/999/shutdown' => Http::response([]),
+            'api.linode.com/v4/linode/instances/999/reboot' => Http::response([]),
+        ]);
+
+        $this->client()->powerOn(999);
+        $this->client()->powerOff(999);
+        $this->client()->reboot(999);
+
+        Http::assertSent(fn ($request) => str_contains((string) $request->url(), '/boot') && $request->body() === '{}');
+        Http::assertSent(fn ($request) => str_contains((string) $request->url(), '/shutdown') && $request->body() === '{}');
+        Http::assertSent(fn ($request) => str_contains((string) $request->url(), '/reboot') && $request->body() === '{}');
+    }
 }
