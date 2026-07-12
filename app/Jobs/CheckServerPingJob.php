@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Panel;
+use App\Models\ServerSecret;
 use App\Services\CheckHost\CheckHostClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -19,6 +20,11 @@ use Throwable;
  * and, ONLY if a node fails, alerts that panel's owner with a "🔄 تغییر سرور"
  * button. A clean or inconclusive result stays silent on purpose — this is a
  * "tell me when something's wrong" check, not a status report.
+ *
+ * Alerts once per ongoing problem, not once per 10-minute run: ServerSecret's
+ * ping_alerted flag is set on the first failing check and checked before
+ * sending again, so a still-broken server doesn't re-alert every cycle. A
+ * clean result clears the flag so the NEXT problem alerts again.
  */
 class CheckServerPingJob implements ShouldQueue
 {
@@ -38,6 +44,10 @@ class CheckServerPingJob implements ShouldQueue
 
     public function handle(CheckHostClient $checkHost, Nutgram $bot): void
     {
+        $secret = ServerSecret::where('panel_id', $this->panelId)
+            ->where('provider_server_id', $this->serverId)
+            ->first();
+
         try {
             $requestId = $checkHost->requestPing($this->ip);
         } catch (Throwable) {
@@ -56,8 +66,22 @@ class CheckServerPingJob implements ShouldQueue
             sleep(3);
         }
 
-        // No result at all (check-host hiccup) or every node ok => nothing to report.
-        if ($result === null || $checkHost->allNodesOk($result)) {
+        // No result at all (check-host hiccup) => nothing to report either way.
+        if ($result === null) {
+            return;
+        }
+
+        if ($checkHost->allNodesOk($result)) {
+            if ($secret?->ping_alerted) {
+                $secret->update(['ping_alerted' => false]);
+            }
+
+            return;
+        }
+
+        // Already alerted for this ongoing problem — stay silent until it
+        // clears (handled above) instead of re-sending every 10 minutes.
+        if ($secret?->ping_alerted) {
             return;
         }
 
@@ -75,5 +99,7 @@ class CheckServerPingJob implements ShouldQueue
         );
 
         $bot->sendMessage($message, chat_id: $ownerId, reply_markup: $keyboard);
+
+        $secret?->update(['ping_alerted' => true]);
     }
 }

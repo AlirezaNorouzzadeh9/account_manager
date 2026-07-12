@@ -15,10 +15,12 @@ class ServerSecret extends Model
         'size',
         'image',
         'hostname',
+        'ping_alerted',
     ];
 
     protected $casts = [
         'root_password' => 'encrypted',
+        'ping_alerted' => 'boolean',
     ];
 
     public function panel()
