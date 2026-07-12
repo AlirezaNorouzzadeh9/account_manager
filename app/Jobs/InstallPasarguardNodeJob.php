@@ -104,8 +104,22 @@ class InstallPasarguardNodeJob implements ShouldQueue
             $message .= "\n\n".$this->condenseLog($result['log']);
         }
 
-        if ($result['success'] && $profile && ! empty($result['cert'])) {
-            $message .= "\n\n".$this->registerNode($profile, $ip, $result['cert']);
+        if ($result['success'] && $profile) {
+            if (! empty($result['cert'])) {
+                $message .= "\n\n".$this->registerNode($profile, $ip, $result['cert']);
+            }
+
+            // Keeps the profile's DNS A record pointed at this server's
+            // current IP — independent of node registration (IP vs domain),
+            // so a saved "profile.node.example.com"-style address always
+            // resolves to wherever that profile's server actually is now.
+            $dns = $installer->syncProfileDns($profile->name, $ip);
+
+            if ($dns) {
+                $message .= $dns['error']
+                    ? "\n\n⚠️ ثبت رکورد DNS برای {$dns['domain']} ناموفق بود: {$dns['error']}"
+                    : "\n\n🌐 دامنه {$dns['domain']} هم به این IP آپدیت شد.";
+            }
         } elseif (! empty($result['cert'])) {
             $message .= "\n\nگواهی SSL این نود (برای ثبت در پنل PasarGuard):\n{$result['cert']}";
         }

@@ -197,6 +197,10 @@ class PasarguardNodeTest extends TestCase
             // ownerId=555 flows through from the panel's created_by.
             ->with('8.8.8.8', 'root', 'already-known-password', 'fake-private-key', null, 555)
             ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => 'fake-cert-pem', 'domain' => null, 'dns_warning' => null]);
+        $installer->shouldReceive('syncProfileDns')
+            ->once()
+            ->with('germany', '8.8.8.8')
+            ->andReturn(['domain' => 'germany.node.pcbot.top', 'error' => null]);
 
         config(['bot.admins' => ['555']]);
         /** @var FakeNutgram $bot */
@@ -218,6 +222,7 @@ class PasarguardNodeTest extends TestCase
         $body = json_decode((string) $request->getBody(), true);
 
         $this->assertStringContainsString('نود جدید (id=777) در پنل PasarGuard ثبت شد', $body['text']);
+        $this->assertStringContainsString('دامنه germany.node.pcbot.top هم به این IP آپدیت شد', $body['text']);
     }
 
     public function test_install_node_falls_back_to_a_manual_message_when_panel_is_not_configured(): void
@@ -260,6 +265,10 @@ class PasarguardNodeTest extends TestCase
         $installer->shouldReceive('install')
             ->once()
             ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => 'fake-cert-pem', 'domain' => null, 'dns_warning' => null]);
+        $installer->shouldReceive('syncProfileDns')
+            ->once()
+            ->with('germany', '8.8.4.4')
+            ->andReturn(null); // Cloudflare not configured in this scenario
 
         config(['bot.admins' => ['555']]);
         /** @var FakeNutgram $bot */
@@ -276,6 +285,67 @@ class PasarguardNodeTest extends TestCase
 
         $this->assertStringContainsString('اطلاعات پنل PasarGuard تنظیم نشده', $body['text']);
         $this->assertStringContainsString('fake-cert-pem', $body['text']);
+    }
+
+    public function test_install_node_reports_a_dns_sync_failure_without_failing_the_whole_install(): void
+    {
+        config([
+            'pasarguard.panel.url' => null,
+            'pasarguard.panel.username' => null,
+            'pasarguard.panel.password' => null,
+        ]);
+
+        $panel = Panel::create([
+            'name' => 'My DO Panel',
+            'provider' => 'digitalocean',
+            'api_token' => 'fake-token',
+            'meta' => [],
+            'is_active' => true,
+            'created_by' => 555,
+        ]);
+
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-private-key', 'created_by' => 555]);
+
+        ServerSecret::create([
+            'panel_id' => $panel->id,
+            'provider_server_id' => 63,
+            'root_password' => 'already-known-password',
+            'wireguard_profile_id' => $profile->id,
+        ]);
+
+        $droplet = [
+            'id' => 63,
+            'name' => 'srv-6',
+            'networks' => ['v4' => [['ip_address' => '8.8.8.1', 'type' => 'public']]],
+        ];
+
+        Http::fake([
+            'api.digitalocean.com/v2/droplets/63' => Http::response(['droplet' => $droplet]),
+        ]);
+
+        $installer = \Mockery::mock(PasarguardNodeInstaller::class);
+        $installer->shouldReceive('install')
+            ->once()
+            ->andReturn(['success' => true, 'message' => 'نود پاسارگارد با موفقیت نصب و اجرا شد.', 'log' => '', 'cert' => 'fake-cert-pem', 'domain' => null, 'dns_warning' => null]);
+        $installer->shouldReceive('syncProfileDns')
+            ->once()
+            ->with('germany', '8.8.8.1')
+            ->andReturn(['domain' => 'germany.node.pcbot.top', 'error' => 'Invalid zone']);
+
+        config(['bot.admins' => ['555']]);
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        $job = new InstallPasarguardNodeJob($panel->id, 63, $bot->chatId() ?? 1);
+        $job->handle($bot, $installer);
+
+        $history = $bot->getRequestHistory();
+        [$request] = array_values(end($history));
+        $body = json_decode((string) $request->getBody(), true);
+
+        $this->assertStringContainsString('✅', $body['text']); // install itself still reported as successful
+        $this->assertStringContainsString('ثبت رکورد DNS برای germany.node.pcbot.top ناموفق بود', $body['text']);
+        $this->assertStringContainsString('Invalid zone', $body['text']);
     }
 
     public function test_installer_env_file_and_compose_content(): void
