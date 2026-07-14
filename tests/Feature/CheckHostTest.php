@@ -46,6 +46,35 @@ class CheckHostTest extends TestCase
         $this->assertStringNotContainsString('0/0', $formatted);
     }
 
+    public function test_all_nodes_ok_ignores_no_response_nodes_but_not_real_failures(): void
+    {
+        $client = new CheckHostClient();
+
+        // A node with zero samples ("no response") is check-host's own probe
+        // never reaching a verdict, not evidence our server is down — it
+        // must not sink an otherwise-clean result.
+        $this->assertTrue($client->allNodesOk([
+            'ir5.node.check-host.net' => [[['OK', 0.09]]],
+            'ir6.node.check-host.net' => [[['OK', 0.11]]],
+            'ir7.node.check-host.net' => [[]],
+        ]));
+
+        // A node that DID get a response but it wasn't OK (e.g. a real
+        // timeout reaching our server) still counts as a failure.
+        $this->assertFalse($client->allNodesOk([
+            'ir5.node.check-host.net' => [[['OK', 0.09]]],
+            'ir9.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+        ]));
+
+        // Every node came back with zero samples — inconclusive, not "clean".
+        $this->assertFalse($client->allNodesOk([
+            'ir5.node.check-host.net' => [[]],
+            'ir6.node.check-host.net' => [[]],
+        ]));
+
+        $this->assertFalse($client->allNodesOk([]));
+    }
+
     public function test_check_host_client_request_ping_returns_request_id(): void
     {
         Http::fake([

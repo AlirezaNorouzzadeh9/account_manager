@@ -103,16 +103,25 @@ class CheckHostClient
 
     /**
      * @param array $data as returned by getResult()
-     * True only if every probed node had at least one successful ping.
+     * True if every probed node that actually returned a sample had at
+     * least one successful ping. A node with ZERO samples ("no response")
+     * means check-host's own probe never reached a verdict — that's a
+     * problem on their end, not evidence our server is unreachable — so it's
+     * skipped rather than counted as a failure. Only a node that DID get
+     * samples but none of them "OK" counts against the server.
      */
     public function allNodesOk(array $data): bool
     {
-        if (empty($data)) {
-            return false;
-        }
+        $sawAnyNode = false;
 
         foreach ($data as $pings) {
             $samples = $pings[0] ?? [];
+
+            if (empty($samples)) {
+                continue;
+            }
+
+            $sawAnyNode = true;
             $ok = array_filter($samples, fn ($s) => ($s[0] ?? null) === 'OK');
 
             if (empty($ok)) {
@@ -120,7 +129,7 @@ class CheckHostClient
             }
         }
 
-        return true;
+        return $sawAnyNode;
     }
 
     /**
