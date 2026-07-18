@@ -23,6 +23,7 @@ class AddPanelConversation extends InlineMenu
     protected ?string $clientId = null;
     protected ?string $clientSecret = null;
     protected ?string $subscriptionId = null;
+    protected ?string $subscriptionName = null;
 
     public function start(Nutgram $bot): void
     {
@@ -175,13 +176,14 @@ class AddPanelConversation extends InlineMenu
         $this->subscriptionId = $value;
 
         try {
-            ProviderManager::make(Provider::Azure, $this->clientSecret, [
+            $account = ProviderManager::make(Provider::Azure, $this->clientSecret, [
                 'tenant_id' => $this->tenantId,
                 'client_id' => $this->clientId,
                 'subscription_id' => $this->subscriptionId,
             ])->account();
+            $this->subscriptionName = $account['email'] ?? $this->subscriptionId;
         } catch (ProviderException $e) {
-            $this->tenantId = $this->clientId = $this->clientSecret = $this->subscriptionId = null;
+            $this->tenantId = $this->clientId = $this->clientSecret = $this->subscriptionId = $this->subscriptionName = null;
             $bot->sendMessage(
                 "اطلاعات وارد شده معتبر نیست:\n{$e->getMessage()}\nدوباره از Tenant ID شروع کنید:",
                 reply_markup: $this->backButton()
@@ -213,7 +215,7 @@ class AddPanelConversation extends InlineMenu
             'provider' => Provider::Azure,
             'api_token' => $this->clientSecret,
             'meta' => [
-                'email' => $this->subscriptionId,
+                'email' => $this->subscriptionName,
                 'uuid' => $this->subscriptionId,
                 'tenant_id' => $this->tenantId,
                 'client_id' => $this->clientId,

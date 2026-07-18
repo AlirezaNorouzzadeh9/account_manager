@@ -59,7 +59,7 @@ class BackNavigationTest extends TestCase
 
     public function test_server_list_panel_choice_back_returns_to_panel_list_not_start(): void
     {
-        Panel::create([
+        $panel = Panel::create([
             'name' => 'My DO Panel',
             'provider' => 'digitalocean',
             'api_token' => 'fake-token',
@@ -79,7 +79,7 @@ class BackNavigationTest extends TestCase
 
         $bot->hearText('/start')->reply();
         $bot->hearCallbackQueryData('server:list')->reply();
-        $bot->hearCallbackQueryData('1')->reply(); // choose the panel -> empty server list
+        $bot->hearCallbackQueryData("{$panel->id}")->reply(); // choose the panel -> empty server list
         $bot->hearCallbackQueryData('x')->reply(); // "🔙 بازگشت" -> back to panel choice
 
         $this->assertStringContainsString('کدام پنل', $this->lastMessageText($bot));
