@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Panel;
 use App\Models\ServerSecret;
 use App\Services\CheckHost\CheckHostClient;
+use App\Services\Pasarguard\NodeFailoverService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -25,6 +26,10 @@ use Throwable;
  * ping_alerted flag is set on the first failing check and checked before
  * sending again, so a still-broken server doesn't re-alert every cycle. A
  * clean result clears the flag so the NEXT problem alerts again.
+ *
+ * That same "first failing check" moment also triggers NodeFailoverService
+ * for a DNS-backed WireGuard profile — borrows a healthy sibling server's IP
+ * for the down profile's domain and starts building a real replacement.
  */
 class CheckServerPingJob implements ShouldQueue
 {
@@ -101,5 +106,9 @@ class CheckServerPingJob implements ShouldQueue
         $bot->sendMessage($message, chat_id: $ownerId, reply_markup: $keyboard);
 
         $secret?->update(['ping_alerted' => true]);
+
+        if ($secret) {
+            app(NodeFailoverService::class)->handle($secret, $bot, $ownerId);
+        }
     }
 }
