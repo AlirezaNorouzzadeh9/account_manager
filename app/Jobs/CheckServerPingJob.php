@@ -29,7 +29,9 @@ use Throwable;
  *
  * That same "first failing check" moment also triggers NodeFailoverService
  * for a DNS-backed WireGuard profile — borrows a healthy sibling server's IP
- * for the down profile's domain and starts building a real replacement.
+ * for the down profile's domain so users don't get disconnected. No new
+ * server is created automatically; replacing the down one stays a manual
+ * "🔄 تغییر سرور" tap.
  */
 class CheckServerPingJob implements ShouldQueue
 {
