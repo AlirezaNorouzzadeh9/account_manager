@@ -14,6 +14,15 @@ class CheckHostClient
 {
     protected const BASE_URL = 'https://check-host.net';
 
+    // check-host always sends this many pings per node once a check truly
+    // finishes (confirmed empirically: a node's result is either literally
+    // null while still running, or a complete batch — never spotted growing
+    // partially). A node reporting FEWER samples than this is an unreliable
+    // read (their API returning a still-forming result as if final), not a
+    // real verdict — allNodesOk() treats it the same as no response at all
+    // rather than trusting it as a genuine failure.
+    protected const EXPECTED_SAMPLES = 4;
+
     /** node hostname => English city */
     protected const IRAN_NODES = [
         'ir2.node.check-host.net' => 'Isfahan',
@@ -104,18 +113,19 @@ class CheckHostClient
     /**
      * @param array $data as returned by getResult()
      * True if the evaluated nodes are clean enough to call it healthy. A
-     * node with ZERO samples ("no response") means check-host's own probe
-     * never reached a verdict — that's a problem on their end, not evidence
-     * our server is unreachable — so it's skipped entirely rather than
-     * counted as a failure. Among the nodes that DID get samples, up to ONE
-     * failing node is tolerated WHEN 2+ nodes got evaluated: a single
-     * check-host probe having a bad measurement window (while every other
-     * node — often 7 of 8 — is fully clean) is common network noise on
-     * their end, not a real outage, and treating it as one was causing
-     * false-positive down-alerts/failovers. With only one node evaluated
-     * (or two-plus real failures), any failure still counts as a genuine
-     * problem — tolerance only kicks in with enough nodes to make "one bad
-     * probe" a meaningfully small fraction.
+     * node with FEWER than EXPECTED_SAMPLES samples (zero included) means
+     * check-host either never reached a verdict or handed back an
+     * unreliable partial read — neither is evidence our server is actually
+     * unreachable, so that node is skipped entirely rather than counted as
+     * a failure. Among the FULLY-sampled nodes, up to ONE failing node is
+     * tolerated WHEN 2+ nodes got evaluated: a single check-host probe
+     * having a bad measurement window (while every other node — often 7 of
+     * 8 — is fully clean) is common network noise on their end, not a real
+     * outage, and treating it as one was causing false-positive
+     * down-alerts/failovers. With only one node evaluated (or two-plus real
+     * failures), any failure still counts as a genuine problem — tolerance
+     * only kicks in with enough nodes to make "one bad probe" a
+     * meaningfully small fraction.
      */
     public function allNodesOk(array $data): bool
     {
@@ -125,7 +135,7 @@ class CheckHostClient
         foreach ($data as $pings) {
             $samples = $pings[0] ?? [];
 
-            if (empty($samples)) {
+            if (count($samples) < self::EXPECTED_SAMPLES) {
                 continue;
             }
 

@@ -36,7 +36,7 @@ class CheckWireguardProfileJobTest extends TestCase
         Http::fake([
             'check-host.net/check-ping*' => Http::response(['ok' => 1, 'request_id' => 'fake-request-id', 'nodes' => []]),
             'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => $ok ? [[['OK', 0.08, '9.9.9.9']]] : [[['TIMEOUT', 3.0]]],
+                'ir5.node.check-host.net' => $ok ? [self::okPings()] : [self::timeoutPings()],
             ]),
         ]);
     }
@@ -125,7 +125,7 @@ class CheckWireguardProfileJobTest extends TestCase
         $this->fakePing(ok: false);
         Http::fake([
             'check-host.net/check-ping*' => Http::response(['ok' => 1, 'request_id' => 'fake-request-id', 'nodes' => []]),
-            'check-host.net/check-result/*' => Http::response(['ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]]]),
+            'check-host.net/check-result/*' => Http::response(['ir5.node.check-host.net' => [self::timeoutPings()]]),
             'api.cloudflare.com/client/v4/zones/zone-1/dns_records?*' => Http::response(['success' => true, 'result' => []]),
             'api.cloudflare.com/client/v4/zones/zone-1/dns_records' => Http::response(['success' => true, 'result' => ['id' => 'rec-1']]),
         ]);
@@ -156,7 +156,7 @@ class CheckWireguardProfileJobTest extends TestCase
         $this->fakePing(ok: false);
         Http::fake([
             'check-host.net/check-ping*' => Http::response(['ok' => 1, 'request_id' => 'fake-request-id', 'nodes' => []]),
-            'check-host.net/check-result/*' => Http::response(['ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]]]),
+            'check-host.net/check-result/*' => Http::response(['ir5.node.check-host.net' => [self::timeoutPings()]]),
         ]);
 
         /** @var FakeNutgram $bot */

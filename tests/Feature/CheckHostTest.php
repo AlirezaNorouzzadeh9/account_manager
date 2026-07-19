@@ -54,8 +54,8 @@ class CheckHostTest extends TestCase
         // never reaching a verdict, not evidence our server is down — it
         // must not sink an otherwise-clean result.
         $this->assertTrue($client->allNodesOk([
-            'ir5.node.check-host.net' => [[['OK', 0.09]]],
-            'ir6.node.check-host.net' => [[['OK', 0.11]]],
+            'ir5.node.check-host.net' => [self::okPings()],
+            'ir6.node.check-host.net' => [self::okPings()],
             'ir7.node.check-host.net' => [[]],
         ]));
 
@@ -63,27 +63,27 @@ class CheckHostTest extends TestCase
         // check-host probe having a bad measurement window) is tolerated —
         // this used to false-positive as "down" off one flaky node out of 8.
         $this->assertTrue($client->allNodesOk([
-            'ir2.node.check-host.net' => [[['TIMEOUT', 3.0]]],
-            'ir3.node.check-host.net' => [[['OK', 0.08]]],
-            'ir4.node.check-host.net' => [[['OK', 0.09]]],
-            'ir5.node.check-host.net' => [[['OK', 0.07]]],
-            'ir6.node.check-host.net' => [[['OK', 0.07]]],
-            'ir7.node.check-host.net' => [[['OK', 0.08]]],
-            'ir8.node.check-host.net' => [[['OK', 0.08]]],
-            'ir9.node.check-host.net' => [[['OK', 0.09]]],
+            'ir2.node.check-host.net' => [self::timeoutPings()],
+            'ir3.node.check-host.net' => [self::okPings()],
+            'ir4.node.check-host.net' => [self::okPings()],
+            'ir5.node.check-host.net' => [self::okPings()],
+            'ir6.node.check-host.net' => [self::okPings()],
+            'ir7.node.check-host.net' => [self::okPings()],
+            'ir8.node.check-host.net' => [self::okPings()],
+            'ir9.node.check-host.net' => [self::okPings()],
         ]));
 
         // Two or more real failures is a genuine problem, not noise.
         $this->assertFalse($client->allNodesOk([
-            'ir5.node.check-host.net' => [[['OK', 0.09]]],
-            'ir8.node.check-host.net' => [[['TIMEOUT', 3.0]]],
-            'ir9.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+            'ir5.node.check-host.net' => [self::okPings()],
+            'ir8.node.check-host.net' => [self::timeoutPings()],
+            'ir9.node.check-host.net' => [self::timeoutPings()],
         ]));
 
         // Tolerance only kicks in with 2+ evaluated nodes — a single
         // evaluated node that fails is a 100% failure rate, not noise.
         $this->assertFalse($client->allNodesOk([
-            'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+            'ir5.node.check-host.net' => [self::timeoutPings()],
         ]));
 
         // Every node came back with zero samples — inconclusive, not "clean".
@@ -93,6 +93,34 @@ class CheckHostTest extends TestCase
         ]));
 
         $this->assertFalse($client->allNodesOk([]));
+    }
+
+    /**
+     * Real incident: check-host reported one node as "0/1 - no response"
+     * (a single failed sample, not the usual 4) while every other node —
+     * and a manual check on check-host.net itself — was fully clean. A node
+     * with FEWER than the expected sample count is an unreliable/partial
+     * read, not a real verdict, so it must be skipped exactly like a
+     * zero-sample node instead of sinking an otherwise-healthy result.
+     */
+    public function test_all_nodes_ok_skips_an_under_sampled_node_instead_of_trusting_it_as_a_real_failure(): void
+    {
+        $client = new CheckHostClient();
+
+        $this->assertTrue($client->allNodesOk([
+            'ir2.node.check-host.net' => [[['TIMEOUT', 3.0]]], // only 1 of the usual 4 samples
+            'ir3.node.check-host.net' => [self::okPings()],
+            'ir4.node.check-host.net' => [self::okPings()],
+            'ir5.node.check-host.net' => [self::okPings()],
+        ]));
+
+        // Even an under-sampled node that happens to look OK so far doesn't
+        // get trusted as a genuine pass — it's simply not evaluated either way.
+        $this->assertTrue($client->allNodesOk([
+            'ir2.node.check-host.net' => [[['OK', 0.08], ['OK', 0.09]]], // only 2 of 4
+            'ir3.node.check-host.net' => [self::okPings()],
+            'ir4.node.check-host.net' => [self::okPings()],
+        ]));
     }
 
     public function test_check_host_client_request_ping_returns_request_id(): void
@@ -165,7 +193,7 @@ class CheckHostTest extends TestCase
     {
         Http::fake([
             'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => [[['OK', 0.08, '9.9.9.9']]],
+                'ir5.node.check-host.net' => [self::okPings()],
             ]),
         ]);
 
@@ -210,7 +238,7 @@ class CheckHostTest extends TestCase
 
         Http::fake([
             'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+                'ir5.node.check-host.net' => [self::timeoutPings()],
             ]),
             'api.digitalocean.com/v2/droplets/99' => Http::response([], 204),
             'api.digitalocean.com/v2/droplets' => Http::response([
@@ -271,8 +299,8 @@ class CheckHostTest extends TestCase
     {
         Http::fake([
             'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => [[['OK', 0.08]]],
-                'ir9.node.check-host.net' => [[['OK', 0.09]]],
+                'ir5.node.check-host.net' => [self::okPings()],
+                'ir9.node.check-host.net' => [self::okPings()],
             ]),
         ]);
 
@@ -309,7 +337,7 @@ class CheckHostTest extends TestCase
     {
         Http::fake([
             'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+                'ir5.node.check-host.net' => [self::timeoutPings()],
             ]),
         ]);
 
@@ -345,7 +373,7 @@ class CheckHostTest extends TestCase
     {
         Http::fake([
             'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => [[['OK', 0.08]]],
+                'ir5.node.check-host.net' => [self::okPings()],
             ]),
         ]);
 
@@ -370,7 +398,7 @@ class CheckHostTest extends TestCase
     {
         Http::fake([
             'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+                'ir5.node.check-host.net' => [self::timeoutPings()],
             ]),
         ]);
 

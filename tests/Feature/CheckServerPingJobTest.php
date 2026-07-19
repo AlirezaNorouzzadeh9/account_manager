@@ -25,7 +25,7 @@ class CheckServerPingJobTest extends TestCase
                 'nodes' => [],
             ]),
             'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => $ok ? [[['OK', 0.08, '9.9.9.9']]] : [[['TIMEOUT', 3.0]]],
+                'ir5.node.check-host.net' => $ok ? [self::okPings()] : [self::timeoutPings()],
             ]),
         ]);
     }

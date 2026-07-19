@@ -64,15 +64,15 @@ class ReplaceServerTest extends TestCase
         $client = new CheckHostClient();
 
         $complete = [
-            'ir5.node.check-host.net' => [[['OK', 0.09]]],
-            'ir9.node.check-host.net' => [[['OK', 0.10]]],
+            'ir5.node.check-host.net' => [self::okPings()],
+            'ir9.node.check-host.net' => [self::okPings()],
         ];
         // 2 real failures — a single flaky node among 2+ evaluated is now
         // tolerated (see CheckHostClient::allNodesOk), so this needs at
         // least two failures to still represent a genuine incomplete ping.
         $incomplete = [
-            'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
-            'ir9.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+            'ir5.node.check-host.net' => [self::timeoutPings()],
+            'ir9.node.check-host.net' => [self::timeoutPings()],
         ];
 
         $this->assertTrue($client->allNodesOk($complete));
@@ -84,7 +84,7 @@ class ReplaceServerTest extends TestCase
     {
         Http::fake([
             'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+                'ir5.node.check-host.net' => [self::timeoutPings()],
             ]),
         ]);
 
@@ -219,7 +219,7 @@ class ReplaceServerTest extends TestCase
 
         Http::fake([
             'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => [[['OK', 0.08]]],
+                'ir5.node.check-host.net' => [self::okPings()],
             ]),
         ]);
 
@@ -243,7 +243,7 @@ class ReplaceServerTest extends TestCase
 
         Http::fake([
             'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+                'ir5.node.check-host.net' => [self::timeoutPings()],
             ]),
             'api.digitalocean.com/v2/droplets/222' => Http::response([], 204),
             'api.digitalocean.com/v2/droplets' => Http::response([
@@ -285,7 +285,7 @@ class ReplaceServerTest extends TestCase
             // existing best-so-far (111... standing in for an earlier
             // attempt, scored 1) — so 222 must be discarded, not 111.
             'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+                'ir5.node.check-host.net' => [self::timeoutPings()],
             ]),
             'api.digitalocean.com/v2/droplets/222' => Http::response([], 204),
             'api.digitalocean.com/v2/droplets' => Http::response([
@@ -323,7 +323,7 @@ class ReplaceServerTest extends TestCase
 
         Http::fake([
             'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+                'ir5.node.check-host.net' => [self::timeoutPings()],
             ]),
         ]);
 
@@ -618,7 +618,7 @@ class ReplaceServerTest extends TestCase
         Http::fake([
             'check-host.net/check-ping*' => Http::response(['ok' => 1, 'request_id' => 'req-xyz']),
             'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+                'ir5.node.check-host.net' => [self::timeoutPings()],
             ]),
         ]);
 
@@ -642,7 +642,7 @@ class ReplaceServerTest extends TestCase
         Http::fake([
             'check-host.net/check-ping*' => Http::response(['ok' => 1, 'request_id' => 'req-xyz']),
             'check-host.net/check-result/*' => Http::response([
-                'ir5.node.check-host.net' => [[['OK', 0.08]]],
+                'ir5.node.check-host.net' => [self::okPings()],
             ]),
         ]);
 
