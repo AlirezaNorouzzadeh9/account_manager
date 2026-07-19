@@ -92,8 +92,13 @@ class WireguardProfileMenu extends InlineMenu
             ? "\n`core_id` (پنل PasarGuard): `{$profile->core_id}`"
             : "\n`core_id` تنظیم نشده — بدون آن، بعد از تغییر IP باید نود را دستی از پنل ریست کنید.";
 
+        $ownIpLine = $profile->own_ip
+            ? "\nآی‌پی اصلی: `{$profile->own_ip}`"
+            : "\nآی‌پی اصلی تنظیم نشده — چک سلامت این پروفایل ممکن است دامنه را به‌جای IP واقعی چک کند.";
+
         $intro = "👁 نمایش پرایوت کی — نمایش PrivateKey این پروفایل\n".
             "🧩 تنظیم آیدی هسته — تنظیم `core_id` این پروفایل در پنل PasarGuard (برای ریست خودکار نود بعد از تغییر IP)\n".
+            "📍 تنظیم آی‌پی اصلی — آی‌پی واقعی سرور این پروفایل (برای چک سلامت و برگشت خودکار دامنه بعد از قطعی)\n".
             "🗑 حذف پروفایل — حذف این پروفایل\n".
             "🔙 بازگشت — بازگشت به لیست پروفایل‌ها\n\n";
 
@@ -102,12 +107,13 @@ class WireguardProfileMenu extends InlineMenu
             $this->rtl(
                 $intro.
                 ($justCreated ? "✅ پروفایل «{$profile->name}» ذخیره شد.\n\n" : '').
-                "نام: `{$profile->name}`".$coreIdLine
+                "نام: `{$profile->name}`".$coreIdLine.$ownIpLine
             ),
             ['parse_mode' => 'Markdown']
         );
         $this->addButtonRow(InlineKeyboardButton::make('👁 نمایش پرایوت کی', callback_data: 'x@revealPrivateKey'));
         $this->addButtonRow(InlineKeyboardButton::make('🧩 تنظیم آیدی هسته', callback_data: 'x@setCoreId'));
+        $this->addButtonRow(InlineKeyboardButton::make('📍 تنظیم آی‌پی اصلی', callback_data: 'x@setOwnIp'));
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف پروفایل', callback_data: 'x@confirmDeleteProfile'));
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToList'));
         $this->showMenu();
@@ -118,6 +124,13 @@ class WireguardProfileMenu extends InlineMenu
         $this->closeMenu();
         $this->end();
         SetWireguardProfileCoreIdConversation::begin($bot, $bot->userId(), $bot->chatId(), [$this->currentProfileId]);
+    }
+
+    public function setOwnIp(Nutgram $bot): void
+    {
+        $this->closeMenu();
+        $this->end();
+        SetWireguardProfileOwnIpConversation::begin($bot, $bot->userId(), $bot->chatId(), [$this->currentProfileId]);
     }
 
     public function revealPrivateKey(Nutgram $bot): void

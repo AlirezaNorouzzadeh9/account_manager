@@ -230,7 +230,7 @@ class WireguardTest extends TestCase
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (direct from settings menu)
         $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
-        $bot->hearCallbackQueryData('x@@')->reply(); // "🗑 حذف پروفایل" (3rd x-prefixed button, after core_id)
+        $bot->hearCallbackQueryData('x@@@')->reply(); // "🗑 حذف پروفایل" (4th x-prefixed button, after core_id + own ip)
         $bot->hearCallbackQueryData('yes')->reply();
 
         $this->assertNull($profile->fresh());
@@ -285,5 +285,58 @@ class WireguardTest extends TestCase
         $bot->hearText('0')->reply();
 
         $this->assertNull($profile->fresh()->core_id);
+    }
+
+    public function test_set_own_ip_updates_the_profile(): void
+    {
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-key', 'created_by' => 555]);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (direct from settings menu)
+        $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
+        $bot->hearCallbackQueryData('x@@')->reply(); // "📍 تنظیم آی‌پی اصلی" (3rd x-prefixed button)
+        $bot->hearText('91.107.156.48')->reply();
+
+        $this->assertSame('91.107.156.48', $profile->fresh()->own_ip);
+    }
+
+    public function test_set_own_ip_rejects_an_invalid_ip(): void
+    {
+        $profile = WireguardProfile::create(['name' => 'germany', 'private_key' => 'fake-key', 'created_by' => 555]);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x@')->reply();
+        $bot->hearCallbackQueryData((string) $profile->id)->reply();
+        $bot->hearCallbackQueryData('x@@')->reply(); // "📍 تنظیم آی‌پی اصلی"
+        $bot->hearText('not-an-ip')->reply();
+
+        $this->assertNull($profile->fresh()->own_ip);
+    }
+
+    public function test_sending_dash_clears_the_profiles_own_ip(): void
+    {
+        $profile = WireguardProfile::create([
+            'name' => 'germany', 'private_key' => 'fake-key', 'created_by' => 555, 'own_ip' => '1.2.3.4',
+        ]);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x@')->reply();
+        $bot->hearCallbackQueryData((string) $profile->id)->reply();
+        $bot->hearCallbackQueryData('x@@')->reply(); // "📍 تنظیم آی‌پی اصلی"
+        $bot->hearText('-')->reply();
+
+        $this->assertNull($profile->fresh()->own_ip);
     }
 }
