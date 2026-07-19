@@ -41,13 +41,14 @@ class CheckWireguardProfileJobTest extends TestCase
         ]);
     }
 
-    protected function makeProfile(string $name, bool $alerted = false): WireguardProfile
+    protected function makeProfile(string $name, bool $alerted = false, ?string $ownIp = null): WireguardProfile
     {
         return WireguardProfile::create([
             'name' => $name,
             'private_key' => "priv-{$name}",
             'created_by' => 555,
             'ping_alerted' => $alerted,
+            'own_ip' => $ownIp,
         ]);
     }
 
@@ -85,7 +86,13 @@ class CheckWireguardProfileJobTest extends TestCase
 
     public function test_a_clean_domain_ping_clears_a_previously_set_alert_flag(): void
     {
-        config(['dns.cloudflare.node_domain' => 'node.test']);
+        // Explicitly empty rather than relying on the ambient default — an
+        // earlier test in the same run may have left Cloudflare configured.
+        config([
+            'dns.cloudflare.node_domain' => 'node.test',
+            'dns.cloudflare.api_token' => null,
+            'dns.cloudflare.zone_id' => null,
+        ]);
         $profile = $this->makeProfile('server3', alerted: true);
         $this->fakePing(ok: true);
 
@@ -169,5 +176,97 @@ class CheckWireguardProfileJobTest extends TestCase
         );
 
         Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), 'dns_records'));
+    }
+
+    public function test_pings_the_profiles_own_ip_not_whatever_the_domain_currently_resolves_to(): void
+    {
+        config(['dns.cloudflare.node_domain' => 'node.test']);
+        // Simulates a profile already failed over: the domain resolves to a
+        // borrowed sibling IP, but its OWN server (own_ip) must still be the
+        // one actually checked — otherwise it would never be seen recovering.
+        $profile = $this->makeProfile('server3', alerted: true, ownIp: '5.5.5.5');
+        $this->fakePing(ok: true);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        (new CheckWireguardProfileJob($profile->id))
+            ->handle(new CheckHostClient(), $this->fakeDns(['server3.node.test' => '9.9.9.1']), $bot);
+
+        Http::assertSent(fn ($request) => str_contains((string) $request->url(), 'check-ping')
+            && str_contains((string) $request->url(), 'host=5.5.5.5'));
+    }
+
+    public function test_recovery_restores_the_domain_to_its_own_ip_and_notifies_the_admin(): void
+    {
+        config([
+            'dns.cloudflare.node_domain' => 'node.test',
+            'dns.cloudflare.api_token' => 'cf-token',
+            'dns.cloudflare.zone_id' => 'zone-1',
+        ]);
+
+        $profile = $this->makeProfile('server3', alerted: true, ownIp: '5.5.5.5');
+
+        Http::fake([
+            'check-host.net/check-ping*' => Http::response(['ok' => 1, 'request_id' => 'fake-request-id', 'nodes' => []]),
+            'check-host.net/check-result/*' => Http::response(['ir5.node.check-host.net' => [self::okPings()]]),
+            'api.cloudflare.com/client/v4/zones/zone-1/dns_records?*' => Http::response(['success' => true, 'result' => []]),
+            'api.cloudflare.com/client/v4/zones/zone-1/dns_records' => Http::response(['success' => true, 'result' => ['id' => 'rec-1']]),
+        ]);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        (new CheckWireguardProfileJob($profile->id))
+            ->handle(new CheckHostClient(), $this->fakeDns([]), $bot);
+
+        $this->assertFalse($profile->fresh()->ping_alerted);
+
+        // The domain was repointed back to the profile's own IP.
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && str_contains((string) $request->url(), 'dns_records')
+            && ($request->data()['content'] ?? null) === '5.5.5.5'
+            && ($request->data()['name'] ?? null) === 'server3.node.test');
+
+        $lastText = null;
+        foreach (array_reverse($bot->getRequestHistory()) as $item) {
+            [$request] = array_values($item);
+            $body = json_decode((string) $request->getBody(), true);
+
+            if (isset($body['text'])) {
+                $lastText = $body['text'];
+                break;
+            }
+        }
+
+        $this->assertNotNull($lastText);
+        $this->assertStringContainsString('برگشت', $lastText);
+    }
+
+    public function test_failover_uses_the_siblings_own_ip_when_set(): void
+    {
+        config(['dns.cloudflare.node_domain' => 'node.test', 'dns.cloudflare.api_token' => 'cf-token', 'dns.cloudflare.zone_id' => 'zone-1']);
+
+        $down = $this->makeProfile('server3', ownIp: '1.2.3.3');
+        $this->makeProfile('server1', ownIp: '9.9.9.1'); // healthy sibling, resolved without any DNS lookup
+
+        Http::fake([
+            'check-host.net/check-ping*' => Http::response(['ok' => 1, 'request_id' => 'fake-request-id', 'nodes' => []]),
+            'check-host.net/check-result/*' => Http::response(['ir5.node.check-host.net' => [self::timeoutPings()]]),
+            'api.cloudflare.com/client/v4/zones/zone-1/dns_records?*' => Http::response(['success' => true, 'result' => []]),
+            'api.cloudflare.com/client/v4/zones/zone-1/dns_records' => Http::response(['success' => true, 'result' => ['id' => 'rec-1']]),
+        ]);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        // No DNS map at all — the sibling's own_ip must be used directly,
+        // never falling through to a (here-unresolvable) domain lookup.
+        (new CheckWireguardProfileJob($down->id))->handle(new CheckHostClient(), $this->fakeDns([]), $bot);
+
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && str_contains((string) $request->url(), 'dns_records')
+            && ($request->data()['content'] ?? null) === '9.9.9.1'
+            && ($request->data()['name'] ?? null) === 'server3.node.test');
     }
 }

@@ -15,17 +15,21 @@ use Throwable;
 
 /**
  * Domain-centric health check for one WireGuard profile (see
- * wireguard:check-profiles, run every 10 minutes): resolves the profile's
- * OWN domain (e.g. "server3.node.pcbot.top") to whatever IP it currently
- * points at and pings THAT from Iran — independent of whether any server in
- * this bot is tracking that IP at all (unlike CheckServerPingJob, which is
- * scoped to a specific ServerSecret).
+ * wireguard:check-profiles, run every 10 minutes): pings the profile's OWN
+ * home IP (WireguardProfile::own_ip, set whenever a node is installed for
+ * it) from Iran — independent of whether any server in this bot is tracking
+ * that IP at all (unlike CheckServerPingJob, which is scoped to a specific
+ * ServerSecret). Deliberately pings own_ip rather than resolving the
+ * profile's domain live: once failed over, the domain points at a
+ * borrowed sibling IP, and resolving it would just re-check the sibling
+ * instead of noticing when the real server comes back.
  *
  * On a real failure, repoints the domain at another of the same admin's
- * profiles whose own domain is currently resolving to a healthy IP, so
- * users following the domain reconnect there instead of dropping. Alerts
- * once per ongoing problem via WireguardProfile::ping_alerted, same pattern
- * as CheckServerPingJob's ServerSecret::ping_alerted.
+ * profiles' own (healthy) IP, so users following the domain reconnect there
+ * instead of dropping. Once the down profile's own IP is healthy again, the
+ * domain is repointed back to it — ending the borrow. Alerts once per
+ * ongoing problem via WireguardProfile::ping_alerted, same pattern as
+ * CheckServerPingJob's ServerSecret::ping_alerted.
  */
 class CheckWireguardProfileJob implements ShouldQueue
 {
@@ -48,10 +52,13 @@ class CheckWireguardProfileJob implements ShouldQueue
         }
 
         $domain = $this->domainFor($profile->name);
-        $ip = $dns->resolve($domain);
+        // Older profiles set up before own_ip existed fall back to whatever
+        // the domain currently resolves to (accurate as long as they've
+        // never been failed over).
+        $ip = $profile->own_ip ?? $dns->resolve($domain);
 
         if (! $ip) {
-            return; // domain doesn't resolve to anything yet — nothing to check
+            return; // no known IP for this profile yet — nothing to check
         }
 
         try {
@@ -79,7 +86,7 @@ class CheckWireguardProfileJob implements ShouldQueue
 
         if ($checkHost->allNodesOk($result)) {
             if ($profile->ping_alerted) {
-                $profile->update(['ping_alerted' => false]);
+                $this->recover($profile, $domain, $ip, $bot);
             }
 
             return;
@@ -94,7 +101,7 @@ class CheckWireguardProfileJob implements ShouldQueue
         $profile->update(['ping_alerted' => true]);
 
         $bot->sendMessage(
-            "⚠️ دامنه‌ی پروفایل «{$profile->name}» ({$domain} ← {$ip}) از ایران مشکل دارد:\n".
+            "⚠️ سرور پروفایل «{$profile->name}» ({$ip}) از ایران مشکل دارد:\n".
             $checkHost->formatResult($result),
             chat_id: $profile->created_by,
         );
@@ -103,9 +110,27 @@ class CheckWireguardProfileJob implements ShouldQueue
     }
 
     /**
-     * Best-effort: the first sibling profile (same admin) whose OWN domain
-     * currently resolves and whose last check was clean gets the down
-     * profile's domain repointed at it. No new server is created here.
+     * The profile's own server is healthy again — move the domain back to
+     * it (ending any temporary borrow) and clear the alert.
+     */
+    protected function recover(WireguardProfile $profile, string $domain, string $ip, Nutgram $bot): void
+    {
+        $profile->update(['ping_alerted' => false]);
+
+        $dnsResult = (new PasarguardNodeInstaller())->syncProfileDns($profile->name, $ip);
+
+        if ($dnsResult && ! $dnsResult['error']) {
+            $bot->sendMessage(
+                "✅ سرور پروفایل «{$profile->name}» دوباره سالم شد؛ دامنه‌ی «{$domain}» به IP اصلی خودش ({$ip}) برگشت.",
+                chat_id: $profile->created_by,
+            );
+        }
+    }
+
+    /**
+     * Best-effort: the first sibling profile (same admin) whose OWN ip is
+     * known and whose last check was clean gets the down profile's domain
+     * repointed at it. No new server is created here.
      */
     protected function failover(WireguardProfile $downProfile, string $downDomain, DnsResolver $dns, Nutgram $bot): void
     {
@@ -115,7 +140,7 @@ class CheckWireguardProfileJob implements ShouldQueue
             ->get();
 
         foreach ($siblings as $sibling) {
-            $ip = $dns->resolve($this->domainFor($sibling->name));
+            $ip = $sibling->own_ip ?? $dns->resolve($this->domainFor($sibling->name));
 
             if (! $ip) {
                 continue;
@@ -125,7 +150,7 @@ class CheckWireguardProfileJob implements ShouldQueue
 
             if ($result && ! $result['error']) {
                 $bot->sendMessage(
-                    "🔀 دامنه‌ی «{$downDomain}» موقتاً به IP پروفایل «{$sibling->name}» ({$ip}) سوییچ شد تا کاربران قطع نشوند.",
+                    "🔀 دامنه‌ی «{$downDomain}» موقتاً به IP پروفایل «{$sibling->name}» ({$ip}) سوییچ شد تا کاربران قطع نشوند؛ به‌محض سالم شدن سرور اصلی دوباره برمی‌گردد.",
                     chat_id: $downProfile->created_by,
                 );
             }

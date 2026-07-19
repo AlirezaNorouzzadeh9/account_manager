@@ -96,6 +96,11 @@ class ReplaceServerFinishJob implements ShouldQueue
 
             $dns = $installer->syncProfileDns($profile->name, $this->newIp);
 
+            // The replacement IS now this profile's home IP — see
+            // CheckWireguardProfileJob, which pings this instead of the
+            // domain's live-resolved target.
+            $profile->update(['own_ip' => $this->newIp]);
+
             if ($dns) {
                 $dnsLine = $dns['error']
                     ? "⚠️ ثبت رکورد DNS برای `{$dns['domain']}` ناموفق بود: `{$dns['error']}`\n\n"

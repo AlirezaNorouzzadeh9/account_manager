@@ -17,6 +17,7 @@ class WireguardProfile extends Model
         'core_id',
         'created_by',
         'ping_alerted',
+        'own_ip',
     ];
 
     protected $casts = [

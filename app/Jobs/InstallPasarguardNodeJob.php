@@ -115,6 +115,12 @@ class InstallPasarguardNodeJob implements ShouldQueue
             // resolves to wherever that profile's server actually is now.
             $dns = $installer->syncProfileDns($profile->name, $ip);
 
+            // Remembered as the profile's "home" IP — CheckWireguardProfileJob
+            // pings THIS, not whatever the domain currently resolves to (which
+            // may be a sibling it's been temporarily failed over to), and
+            // restores the domain here once this server is healthy again.
+            $profile->update(['own_ip' => $ip]);
+
             if ($dns) {
                 $message .= $dns['error']
                     ? "\n\n⚠️ ثبت رکورد DNS برای {$dns['domain']} ناموفق بود: {$dns['error']}"
