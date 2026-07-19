@@ -1,6 +1,7 @@
 <?php
 
 use App\Console\Commands\CheckServerPingsCommand;
+use App\Console\Commands\CheckWireguardProfilesCommand;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -13,3 +14,4 @@ Artisan::command('inspire', function () {
 // loop set up, so in production this command is invoked directly every 10
 // minutes via the server's crontab instead of through this schedule.
 Schedule::command(CheckServerPingsCommand::class)->everyTenMinutes();
+Schedule::command(CheckWireguardProfilesCommand::class)->everyTenMinutes();
