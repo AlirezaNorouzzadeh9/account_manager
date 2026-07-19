@@ -10,6 +10,7 @@ use App\Models\Panel;
 use App\Models\ServerSecret;
 use App\Models\WireguardProfile;
 use App\Services\CheckHost\CheckHostClient;
+use App\Services\Pasarguard\PasarguardPanelClient;
 use App\Services\Providers\ProviderClient;
 use App\Services\Providers\ProviderException;
 use App\Services\Providers\ProviderManager;
@@ -22,6 +23,7 @@ use App\Telegram\Support\GridButtons;
 use SergiX44\Nutgram\Conversations\InlineMenu;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
+use Throwable;
 
 class ServerListMenu extends InlineMenu
 {
@@ -651,6 +653,10 @@ class ServerListMenu extends InlineMenu
 
     public function doDeleteServer(Nutgram $bot): void
     {
+        $secret = ServerSecret::where('panel_id', $this->panelId)
+            ->where('provider_server_id', $this->serverId)
+            ->first();
+
         try {
             $this->client()->deleteServer($this->serverId);
         } catch (ProviderException $e) {
@@ -660,6 +666,39 @@ class ServerListMenu extends InlineMenu
 
         $this->setCallbackQueryOptions(['text' => 'سرور حذف شد.']);
         $this->renderList($bot);
+
+        $profile = $secret?->wireguardProfile;
+
+        if ($profile?->core_id) {
+            $bot->sendMessage($this->deleteNode($profile), chat_id: $bot->chatId());
+        }
+    }
+
+    /**
+     * Cleans up the PasarGuard panel node left behind by a deleted server —
+     * without this, the panel keeps pointing at an IP that's gone.
+     */
+    protected function deleteNode(WireguardProfile $profile): string
+    {
+        $nodeId = $profile->core_id;
+
+        if (! filled(config('pasarguard.panel.url')) || ! filled(config('pasarguard.panel.username')) || ! filled(config('pasarguard.panel.password'))) {
+            return "⚠️ اطلاعات پنل PasarGuard تنظیم نشده؛ نود این سرور (id={$nodeId}) را دستی از پنل حذف کنید.";
+        }
+
+        try {
+            (new PasarguardPanelClient(
+                config('pasarguard.panel.url'),
+                config('pasarguard.panel.username'),
+                config('pasarguard.panel.password'),
+            ))->deleteNode($nodeId);
+
+            $profile->update(['core_id' => null]);
+
+            return "🗑 نود این سرور (id={$nodeId}) هم از پنل PasarGuard حذف شد.";
+        } catch (Throwable $e) {
+            return "⚠️ حذف نود این سرور (id={$nodeId}) از پنل ناموفق بود ({$e->getMessage()})؛ دستی حذفش کنید.";
+        }
     }
 
     public function backToServer(Nutgram $bot): void

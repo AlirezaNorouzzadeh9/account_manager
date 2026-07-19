@@ -6,6 +6,7 @@ use App\Jobs\PollProviderActionJob;
 use App\Jobs\ServerPingCheckJob;
 use App\Models\Panel;
 use App\Models\ServerSecret;
+use App\Models\WireguardProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -254,5 +255,168 @@ class ServerListMenuTest extends TestCase
 
         $this->assertSame(20, strlen($stored->root_password));
         $this->assertNotSame('old-plaintext-password', $stored->root_password);
+    }
+
+    protected function deleteServerPanelAndSecret(?int $wireguardProfileId = null): array
+    {
+        $panel = Panel::create([
+            'name' => 'My DO Panel',
+            'provider' => 'digitalocean',
+            'api_token' => 'fake-token',
+            'meta' => [],
+            'is_active' => true,
+            'created_by' => 555,
+        ]);
+
+        $droplet = [
+            'id' => 42,
+            'name' => 'my-server-1',
+            'status' => 'active',
+            'region' => ['slug' => 'nyc1', 'name' => 'New York 1'],
+            'size_slug' => 's-1vcpu-1gb',
+            'image' => ['distribution' => 'Ubuntu', 'name' => '24.04 x64'],
+            'networks' => ['v4' => [['ip_address' => '1.2.3.4', 'type' => 'public']]],
+        ];
+
+        Http::fake([
+            'api.digitalocean.com/v2/droplets?*' => Http::response([
+                'droplets' => [$droplet], 'links' => [], 'meta' => ['total' => 1],
+            ]),
+            'api.digitalocean.com/v2/droplets/42' => Http::response(['droplet' => $droplet]),
+        ]);
+
+        $secret = ServerSecret::create([
+            'panel_id' => $panel->id,
+            'provider_server_id' => 42,
+            'root_password' => 'pw',
+            'wireguard_profile_id' => $wireguardProfileId,
+        ]);
+
+        return [$panel, $secret];
+    }
+
+    protected function runDeleteFlow(int $panelId): FakeNutgram
+    {
+        config(['bot.admins' => ['555']]);
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+        $bot->setCommonUser(User::make(id: 555, is_bot: false, first_name: 'Tester'));
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('server:list')->reply();
+        $bot->hearCallbackQueryData("{$panelId}")->reply();
+        $bot->hearCallbackQueryData('42')->reply();
+        $bot->hearCallbackQueryData('x@@@@@@@@@')->reply(); // 10th grid button = confirmDeleteServer
+        $bot->hearCallbackQueryData('yes')->reply(); // doDeleteServer
+
+        return $bot;
+    }
+
+    public function test_deleting_a_server_with_no_wireguard_profile_does_not_touch_pasarguard(): void
+    {
+        [$panel] = $this->deleteServerPanelAndSecret();
+
+        Http::fake([
+            'api.digitalocean.com/v2/droplets/42' => Http::response([], 204),
+        ]);
+
+        $bot = $this->runDeleteFlow($panel->id);
+
+        Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), 'api/admin/token'));
+        $this->assertCount(0, array_filter($bot->getRequestHistory(), function ($item) {
+            [$request] = array_values($item);
+            $body = json_decode((string) $request->getBody(), true);
+
+            return isset($body['text']) && str_contains($body['text'], 'نود');
+        }));
+    }
+
+    public function test_deleting_a_noded_server_also_deletes_its_pasarguard_node(): void
+    {
+        config([
+            'pasarguard.panel.url' => 'https://panel.test',
+            'pasarguard.panel.username' => 'admin',
+            'pasarguard.panel.password' => 'secret',
+        ]);
+
+        $profile = WireguardProfile::create([
+            'name' => 'server3',
+            'private_key' => 'priv',
+            'created_by' => 555,
+            'core_id' => 99,
+        ]);
+
+        [$panel] = $this->deleteServerPanelAndSecret($profile->id);
+
+        Http::fake([
+            'api.digitalocean.com/v2/droplets/42' => Http::response([], 204),
+            'panel.test/api/admin/token' => Http::response(['access_token' => 'tok']),
+            'panel.test/api/node/99' => Http::response([], 200),
+        ]);
+
+        $bot = $this->runDeleteFlow($panel->id);
+
+        Http::assertSent(fn ($request) => $request->method() === 'DELETE'
+            && str_contains((string) $request->url(), '/api/node/99'));
+
+        $this->assertNull($profile->fresh()->core_id);
+
+        $lastText = null;
+        foreach (array_reverse($bot->getRequestHistory()) as $item) {
+            [$request] = array_values($item);
+            $body = json_decode((string) $request->getBody(), true);
+
+            if (isset($body['text']) && str_contains($body['text'], 'نود')) {
+                $lastText = $body['text'];
+                break;
+            }
+        }
+
+        $this->assertNotNull($lastText);
+        $this->assertStringContainsString('حذف شد', $lastText);
+    }
+
+    public function test_deleting_a_noded_server_without_panel_configured_tells_the_admin_to_delete_manually(): void
+    {
+        // Explicitly empty rather than relying on the ambient default — a
+        // real deploy's .env may have these genuinely configured.
+        config([
+            'pasarguard.panel.url' => null,
+            'pasarguard.panel.username' => null,
+            'pasarguard.panel.password' => null,
+        ]);
+
+        $profile = WireguardProfile::create([
+            'name' => 'server3',
+            'private_key' => 'priv',
+            'created_by' => 555,
+            'core_id' => 99,
+        ]);
+
+        [$panel] = $this->deleteServerPanelAndSecret($profile->id);
+
+        Http::fake([
+            'api.digitalocean.com/v2/droplets/42' => Http::response([], 204),
+        ]);
+
+        $bot = $this->runDeleteFlow($panel->id);
+
+        // core_id is left untouched — we don't know it was actually cleaned up.
+        $this->assertSame(99, $profile->fresh()->core_id);
+
+        $lastText = null;
+        foreach (array_reverse($bot->getRequestHistory()) as $item) {
+            [$request] = array_values($item);
+            $body = json_decode((string) $request->getBody(), true);
+
+            if (isset($body['text']) && str_contains($body['text'], 'نود')) {
+                $lastText = $body['text'];
+                break;
+            }
+        }
+
+        $this->assertNotNull($lastText);
+        $this->assertStringContainsString('تنظیم نشده', $lastText);
     }
 }
