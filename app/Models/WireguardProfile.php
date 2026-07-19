@@ -18,12 +18,14 @@ class WireguardProfile extends Model
         'created_by',
         'ping_alerted',
         'own_ip',
+        'borrowed_from_id',
     ];
 
     protected $casts = [
         'private_key' => 'encrypted',
         'core_id' => 'integer',
         'ping_alerted' => 'boolean',
+        'borrowed_from_id' => 'integer',
     ];
 
     /** Every profile belongs to exactly one Telegram user — no sharing between users. */

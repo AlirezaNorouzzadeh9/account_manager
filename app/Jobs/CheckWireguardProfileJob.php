@@ -26,8 +26,13 @@ use Throwable;
  *
  * On a real failure, repoints the domain at another of the same admin's
  * profiles' own (healthy) IP, so users following the domain reconnect there
- * instead of dropping. Once the down profile's own IP is healthy again, the
- * domain is repointed back to it — ending the borrow. Alerts once per
+ * instead of dropping — and remembers WHICH sibling was borrowed
+ * (borrowed_from_id). While still down, later runs check whether that
+ * borrowed sibling has ALSO gone down (or disappeared) and re-failover to a
+ * fresh one instead of getting stuck pointed at a second dead IP — a plain
+ * "already alerted, stay silent" guard would otherwise never notice a
+ * second-order failure. Once the down profile's own IP is healthy again,
+ * the domain is repointed back to it — ending the borrow. Alerts once per
  * ongoing problem via WireguardProfile::ping_alerted, same pattern as
  * CheckServerPingJob's ServerSecret::ping_alerted.
  */
@@ -92,9 +97,13 @@ class CheckWireguardProfileJob implements ShouldQueue
             return;
         }
 
-        // Already alerted for this ongoing problem — stay silent until it
-        // clears (handled above) instead of re-sending every 10 minutes.
         if ($profile->ping_alerted) {
+            // Still down — but the sibling we borrowed from earlier may have
+            // ALSO gone down since, in which case the domain is now pointed
+            // at a second dead IP with nothing else re-checking it. Only
+            // this re-evaluation, not a fresh alert (already sent).
+            $this->reconsiderFailover($profile, $domain, $dns, $bot);
+
             return;
         }
 
@@ -115,7 +124,7 @@ class CheckWireguardProfileJob implements ShouldQueue
      */
     protected function recover(WireguardProfile $profile, string $domain, string $ip, Nutgram $bot): void
     {
-        $profile->update(['ping_alerted' => false]);
+        $profile->update(['ping_alerted' => false, 'borrowed_from_id' => null]);
 
         $dnsResult = (new PasarguardNodeInstaller())->syncProfileDns($profile->name, $ip);
 
@@ -128,9 +137,30 @@ class CheckWireguardProfileJob implements ShouldQueue
     }
 
     /**
+     * Re-runs failover() if there's currently no borrowed sibling recorded,
+     * or the one recorded has itself gone down (or been deleted) since —
+     * the only way a still-down profile ever gets moved off a now-also-dead
+     * borrowed IP instead of staying stuck on it indefinitely.
+     */
+    protected function reconsiderFailover(WireguardProfile $profile, string $domain, DnsResolver $dns, Nutgram $bot): void
+    {
+        if ($profile->borrowed_from_id) {
+            $borrowedFrom = WireguardProfile::find($profile->borrowed_from_id);
+
+            if ($borrowedFrom && ! $borrowedFrom->ping_alerted) {
+                return; // still healthy, nothing to do
+            }
+        }
+
+        $this->failover($profile, $domain, $dns, $bot);
+    }
+
+    /**
      * Best-effort: the first sibling profile (same admin) whose OWN ip is
      * known and whose last check was clean gets the down profile's domain
-     * repointed at it. No new server is created here.
+     * repointed at it, and is remembered via borrowed_from_id so a later
+     * run can notice if THAT sibling also goes down. No new server is
+     * created here.
      */
     protected function failover(WireguardProfile $downProfile, string $downDomain, DnsResolver $dns, Nutgram $bot): void
     {
@@ -149,6 +179,7 @@ class CheckWireguardProfileJob implements ShouldQueue
             $result = (new PasarguardNodeInstaller())->syncProfileDns($downProfile->name, $ip);
 
             if ($result && ! $result['error']) {
+                $downProfile->update(['borrowed_from_id' => $sibling->id]);
                 $bot->sendMessage(
                     "🔀 دامنه‌ی «{$downDomain}» موقتاً به IP پروفایل «{$sibling->name}» ({$ip}) سوییچ شد تا کاربران قطع نشوند؛ به‌محض سالم شدن سرور اصلی دوباره برمی‌گردد.",
                     chat_id: $downProfile->created_by,

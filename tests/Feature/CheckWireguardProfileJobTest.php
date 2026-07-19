@@ -268,5 +268,119 @@ class CheckWireguardProfileJobTest extends TestCase
             && str_contains((string) $request->url(), 'dns_records')
             && ($request->data()['content'] ?? null) === '9.9.9.1'
             && ($request->data()['name'] ?? null) === 'server3.node.test');
+
+        $sibling = WireguardProfile::where('name', 'server1')->first();
+        $this->assertSame($sibling->id, $down->fresh()->borrowed_from_id);
+    }
+
+    public function test_does_not_resync_dns_while_the_borrowed_sibling_is_still_healthy(): void
+    {
+        config(['dns.cloudflare.node_domain' => 'node.test', 'dns.cloudflare.api_token' => 'cf-token', 'dns.cloudflare.zone_id' => 'zone-1']);
+
+        $sibling = $this->makeProfile('server1', ownIp: '9.9.9.1'); // still healthy
+        $down = $this->makeProfile('server3', alerted: true, ownIp: '1.2.3.3');
+        $down->update(['borrowed_from_id' => $sibling->id]);
+
+        $this->fakePing(ok: false); // server3's own IP is still down
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        (new CheckWireguardProfileJob($down->id))->handle(new CheckHostClient(), $this->fakeDns([]), $bot);
+
+        Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), 'dns_records'));
+        $this->assertSame($sibling->id, $down->fresh()->borrowed_from_id);
+    }
+
+    public function test_reconsiders_failover_when_the_borrowed_sibling_has_also_gone_down(): void
+    {
+        config(['dns.cloudflare.node_domain' => 'node.test', 'dns.cloudflare.api_token' => 'cf-token', 'dns.cloudflare.zone_id' => 'zone-1']);
+
+        // server3 is down and had earlier borrowed server2's IP — but
+        // server2 has SINCE gone down too (ping_alerted=true), and a third
+        // profile (server1) is the only one still actually healthy.
+        $server2 = $this->makeProfile('server2', alerted: true, ownIp: '2.2.2.2');
+        $server1 = $this->makeProfile('server1', ownIp: '9.9.9.1');
+        $down = $this->makeProfile('server3', alerted: true, ownIp: '3.3.3.3');
+        $down->update(['borrowed_from_id' => $server2->id]);
+
+        $this->fakePing(ok: false); // server3's own IP is still down
+
+        Http::fake([
+            'check-host.net/check-ping*' => Http::response(['ok' => 1, 'request_id' => 'fake-request-id', 'nodes' => []]),
+            'check-host.net/check-result/*' => Http::response(['ir5.node.check-host.net' => [self::timeoutPings()]]),
+            'api.cloudflare.com/client/v4/zones/zone-1/dns_records?*' => Http::response(['success' => true, 'result' => []]),
+            'api.cloudflare.com/client/v4/zones/zone-1/dns_records' => Http::response(['success' => true, 'result' => ['id' => 'rec-1']]),
+        ]);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        (new CheckWireguardProfileJob($down->id))->handle(new CheckHostClient(), $this->fakeDns([]), $bot);
+
+        // Re-failed-over to the still-healthy server1, not the now-dead server2.
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && str_contains((string) $request->url(), 'dns_records')
+            && ($request->data()['content'] ?? null) === '9.9.9.1'
+            && ($request->data()['name'] ?? null) === 'server3.node.test');
+
+        $this->assertSame($server1->id, $down->fresh()->borrowed_from_id);
+    }
+
+    public function test_reconsiders_failover_when_no_sibling_was_ever_available(): void
+    {
+        config(['dns.cloudflare.node_domain' => 'node.test', 'dns.cloudflare.api_token' => 'cf-token', 'dns.cloudflare.zone_id' => 'zone-1']);
+
+        // server3 went down while every sibling was ALSO down — no borrow
+        // ever succeeded (borrowed_from_id stayed null). One has since
+        // recovered and must now be picked up on a later run.
+        $down = $this->makeProfile('server3', alerted: true, ownIp: '3.3.3.3');
+        $recovered = $this->makeProfile('server1', ownIp: '9.9.9.1');
+
+        $this->fakePing(ok: false);
+        Http::fake([
+            'check-host.net/check-ping*' => Http::response(['ok' => 1, 'request_id' => 'fake-request-id', 'nodes' => []]),
+            'check-host.net/check-result/*' => Http::response(['ir5.node.check-host.net' => [self::timeoutPings()]]),
+            'api.cloudflare.com/client/v4/zones/zone-1/dns_records?*' => Http::response(['success' => true, 'result' => []]),
+            'api.cloudflare.com/client/v4/zones/zone-1/dns_records' => Http::response(['success' => true, 'result' => ['id' => 'rec-1']]),
+        ]);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        (new CheckWireguardProfileJob($down->id))->handle(new CheckHostClient(), $this->fakeDns([]), $bot);
+
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && str_contains((string) $request->url(), 'dns_records')
+            && ($request->data()['content'] ?? null) === '9.9.9.1');
+
+        $this->assertSame($recovered->id, $down->fresh()->borrowed_from_id);
+    }
+
+    public function test_recovery_clears_the_borrowed_from_id(): void
+    {
+        config([
+            'dns.cloudflare.node_domain' => 'node.test',
+            'dns.cloudflare.api_token' => 'cf-token',
+            'dns.cloudflare.zone_id' => 'zone-1',
+        ]);
+
+        $sibling = $this->makeProfile('server1', ownIp: '9.9.9.1');
+        $profile = $this->makeProfile('server3', alerted: true, ownIp: '5.5.5.5');
+        $profile->update(['borrowed_from_id' => $sibling->id]);
+
+        Http::fake([
+            'check-host.net/check-ping*' => Http::response(['ok' => 1, 'request_id' => 'fake-request-id', 'nodes' => []]),
+            'check-host.net/check-result/*' => Http::response(['ir5.node.check-host.net' => [self::okPings()]]),
+            'api.cloudflare.com/client/v4/zones/zone-1/dns_records?*' => Http::response(['success' => true, 'result' => []]),
+            'api.cloudflare.com/client/v4/zones/zone-1/dns_records' => Http::response(['success' => true, 'result' => ['id' => 'rec-1']]),
+        ]);
+
+        /** @var FakeNutgram $bot */
+        $bot = $this->app->make(Nutgram::class);
+
+        (new CheckWireguardProfileJob($profile->id))->handle(new CheckHostClient(), $this->fakeDns([]), $bot);
+
+        $this->assertNull($profile->fresh()->borrowed_from_id);
     }
 }
