@@ -21,12 +21,18 @@ class CheckWireguardProfilesCommand extends Command
     public function handle(): int
     {
         if (! filled(config('dns.cloudflare.zone_id')) || ! filled(config('dns.cloudflare.api_token'))) {
-            return self::SUCCESS; // no DNS configured — profile domains don't exist
+            $this->info("[".now()."] Cloudflare not configured — skipped.");
+
+            return self::SUCCESS;
         }
 
-        foreach (WireguardProfile::all() as $profile) {
+        $profiles = WireguardProfile::all();
+
+        foreach ($profiles as $profile) {
             CheckWireguardProfileJob::dispatch($profile->id);
         }
+
+        $this->info("[".now()."] queued {$profiles->count()} wireguard profile check(s).");
 
         return self::SUCCESS;
     }

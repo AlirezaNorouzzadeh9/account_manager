@@ -31,10 +31,14 @@ class CheckServerPingsCommand extends Command
             ->whereNotNull('hostname')
             ->get();
 
+        $queued = 0;
+        $skipped = 0;
+
         foreach ($secrets as $secret) {
             $panel = Panel::find($secret->panel_id);
 
             if (! $panel || ! $panel->is_active) {
+                $skipped++;
                 continue;
             }
 
@@ -42,15 +46,20 @@ class CheckServerPingsCommand extends Command
                 $server = ProviderManager::forPanel($panel)->getServer($secret->provider_server_id);
                 $ip = collect($server['networks']['v4'] ?? [])->firstWhere('type', 'public')['ip_address'] ?? null;
             } catch (Throwable) {
+                $skipped++;
                 continue;
             }
 
             if (! $ip) {
+                $skipped++;
                 continue;
             }
 
             CheckServerPingJob::dispatch($secret->panel_id, (string) $secret->provider_server_id, $ip, $secret->hostname);
+            $queued++;
         }
+
+        $this->info("[".now()."] queued {$queued} server ping check(s), skipped {$skipped}.");
 
         return self::SUCCESS;
     }
