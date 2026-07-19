@@ -59,11 +59,31 @@ class CheckHostTest extends TestCase
             'ir7.node.check-host.net' => [[]],
         ]));
 
-        // A node that DID get a response but it wasn't OK (e.g. a real
-        // timeout reaching our server) still counts as a failure.
+        // A single real failure among many otherwise-clean nodes (e.g. one
+        // check-host probe having a bad measurement window) is tolerated —
+        // this used to false-positive as "down" off one flaky node out of 8.
+        $this->assertTrue($client->allNodesOk([
+            'ir2.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+            'ir3.node.check-host.net' => [[['OK', 0.08]]],
+            'ir4.node.check-host.net' => [[['OK', 0.09]]],
+            'ir5.node.check-host.net' => [[['OK', 0.07]]],
+            'ir6.node.check-host.net' => [[['OK', 0.07]]],
+            'ir7.node.check-host.net' => [[['OK', 0.08]]],
+            'ir8.node.check-host.net' => [[['OK', 0.08]]],
+            'ir9.node.check-host.net' => [[['OK', 0.09]]],
+        ]));
+
+        // Two or more real failures is a genuine problem, not noise.
         $this->assertFalse($client->allNodesOk([
             'ir5.node.check-host.net' => [[['OK', 0.09]]],
+            'ir8.node.check-host.net' => [[['TIMEOUT', 3.0]]],
             'ir9.node.check-host.net' => [[['TIMEOUT', 3.0]]],
+        ]));
+
+        // Tolerance only kicks in with 2+ evaluated nodes — a single
+        // evaluated node that fails is a 100% failure rate, not noise.
+        $this->assertFalse($client->allNodesOk([
+            'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
         ]));
 
         // Every node came back with zero samples — inconclusive, not "clean".

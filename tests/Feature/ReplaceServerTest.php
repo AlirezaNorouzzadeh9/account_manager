@@ -67,8 +67,11 @@ class ReplaceServerTest extends TestCase
             'ir5.node.check-host.net' => [[['OK', 0.09]]],
             'ir9.node.check-host.net' => [[['OK', 0.10]]],
         ];
+        // 2 real failures — a single flaky node among 2+ evaluated is now
+        // tolerated (see CheckHostClient::allNodesOk), so this needs at
+        // least two failures to still represent a genuine incomplete ping.
         $incomplete = [
-            'ir5.node.check-host.net' => [[['OK', 0.09]]],
+            'ir5.node.check-host.net' => [[['TIMEOUT', 3.0]]],
             'ir9.node.check-host.net' => [[['TIMEOUT', 3.0]]],
         ];
 

@@ -103,16 +103,24 @@ class CheckHostClient
 
     /**
      * @param array $data as returned by getResult()
-     * True if every probed node that actually returned a sample had at
-     * least one successful ping. A node with ZERO samples ("no response")
-     * means check-host's own probe never reached a verdict — that's a
-     * problem on their end, not evidence our server is unreachable — so it's
-     * skipped rather than counted as a failure. Only a node that DID get
-     * samples but none of them "OK" counts against the server.
+     * True if the evaluated nodes are clean enough to call it healthy. A
+     * node with ZERO samples ("no response") means check-host's own probe
+     * never reached a verdict — that's a problem on their end, not evidence
+     * our server is unreachable — so it's skipped entirely rather than
+     * counted as a failure. Among the nodes that DID get samples, up to ONE
+     * failing node is tolerated WHEN 2+ nodes got evaluated: a single
+     * check-host probe having a bad measurement window (while every other
+     * node — often 7 of 8 — is fully clean) is common network noise on
+     * their end, not a real outage, and treating it as one was causing
+     * false-positive down-alerts/failovers. With only one node evaluated
+     * (or two-plus real failures), any failure still counts as a genuine
+     * problem — tolerance only kicks in with enough nodes to make "one bad
+     * probe" a meaningfully small fraction.
      */
     public function allNodesOk(array $data): bool
     {
-        $sawAnyNode = false;
+        $evaluated = 0;
+        $failed = 0;
 
         foreach ($data as $pings) {
             $samples = $pings[0] ?? [];
@@ -121,15 +129,19 @@ class CheckHostClient
                 continue;
             }
 
-            $sawAnyNode = true;
+            $evaluated++;
             $ok = array_filter($samples, fn ($s) => ($s[0] ?? null) === 'OK');
 
             if (empty($ok)) {
-                return false;
+                $failed++;
             }
         }
 
-        return $sawAnyNode;
+        if ($evaluated === 0) {
+            return false;
+        }
+
+        return $evaluated >= 2 ? $failed <= 1 : $failed === 0;
     }
 
     /**
