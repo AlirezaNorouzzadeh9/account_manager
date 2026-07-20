@@ -7,10 +7,14 @@ use App\Models\Panel;
 use App\Models\ServerSecret;
 use App\Models\WireguardLocation;
 use App\Models\WireguardProfile;
+use App\Jobs\InstallPasarguardNodeJob;
 use App\Telegram\Conversations\AddBotUserConversation;
 use App\Telegram\Conversations\UserManagementMenu;
+use App\Telegram\Conversations\WireguardMenu;
+use App\Telegram\Conversations\WireguardProfileMenu;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\User\User;
 use SergiX44\Nutgram\Testing\FakeNutgram;
@@ -308,6 +312,150 @@ class MultiTenantIsolationTest extends TestCase
         $body = $this->lastMessageBody($bot);
         $this->assertStringContainsString('مالکین', $body['text']);
         $this->assertDatabaseCount('bot_users', 1); // still just the seeded USER_B row, nothing added
+    }
+
+    /**
+     * The WireGuard node-install/update capability (ServerListMenu buttons)
+     * and the entire Settings > WireGuard area (locations + profiles) are
+     * owner-only — a granted regular user gets their own fully isolated
+     * panels/servers but must not be able to node-install a PasarGuard
+     * server or touch shared WireGuard identities.
+     */
+    public function test_non_owner_does_not_see_the_wireguard_settings_buttons(): void
+    {
+        config(['bot.admins' => [(string) self::USER_A]]);
+        BotUser::create(['telegram_id' => self::USER_B, 'label' => 'Friend', 'added_by' => self::USER_A]);
+
+        $bot = $this->botAs(self::USER_B);
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+
+        $body = $this->lastMessageBody($bot);
+        $this->assertStringNotContainsString('مدیریت وایرگاردها', json_encode($body, JSON_UNESCAPED_UNICODE));
+        $this->assertStringNotContainsString('پروفایل‌ها', json_encode($body, JSON_UNESCAPED_UNICODE));
+        $this->assertStringContainsString('فقط برای مدیر ربات', $body['text']);
+    }
+
+    /**
+     * Defense-in-depth: even if WireguardMenu were ever reached some other
+     * way than tapping the (owner-only, never-rendered-to-B) settings
+     * button, it re-checks ownership itself at the top of start().
+     */
+    public function test_wireguard_menu_denies_a_non_owner_even_called_directly(): void
+    {
+        config(['bot.admins' => [(string) self::USER_A]]);
+        BotUser::create(['telegram_id' => self::USER_B, 'label' => 'Friend', 'added_by' => self::USER_A]);
+
+        $bot = $this->botAs(self::USER_B);
+        $bot->willStartConversation();
+        $bot->hearText('/start')->reply();
+        WireguardMenu::begin($bot);
+
+        $body = $this->lastMessageBody($bot);
+        $this->assertStringContainsString('فقط برای مدیر ربات', $body['text']);
+    }
+
+    public function test_wireguard_profile_menu_denies_a_non_owner_even_called_directly(): void
+    {
+        config(['bot.admins' => [(string) self::USER_A]]);
+        BotUser::create(['telegram_id' => self::USER_B, 'label' => 'Friend', 'added_by' => self::USER_A]);
+
+        $bot = $this->botAs(self::USER_B);
+        $bot->willStartConversation();
+        $bot->hearText('/start')->reply();
+        WireguardProfileMenu::begin($bot);
+
+        $body = $this->lastMessageBody($bot);
+        $this->assertStringContainsString('فقط برای مدیر ربات', $body['text']);
+    }
+
+    public function test_non_owner_does_not_see_node_install_buttons_on_server_detail(): void
+    {
+        config(['bot.admins' => [(string) self::USER_A]]);
+        BotUser::create(['telegram_id' => self::USER_B, 'label' => 'Friend', 'added_by' => self::USER_A]);
+
+        $panel = $this->makePanel(self::USER_B, 'B Panel');
+
+        $droplet = [
+            'id' => 71,
+            'name' => 'srv-b',
+            'status' => 'active',
+            'region' => ['slug' => 'nyc1', 'name' => 'New York 1'],
+            'size_slug' => 's-1vcpu-1gb',
+            'image' => ['distribution' => 'Ubuntu', 'name' => '24.04 x64'],
+            'networks' => ['v4' => [['ip_address' => '9.9.9.1', 'type' => 'public']]],
+        ];
+
+        Http::fake([
+            'api.digitalocean.com/v2/droplets?*' => Http::response(['droplets' => [$droplet], 'links' => [], 'meta' => ['total' => 1]]),
+            'api.digitalocean.com/v2/droplets/71' => Http::response(['droplet' => $droplet]),
+            'api.digitalocean.com/v2/reserved_ips*' => Http::response(['reserved_ips' => []]),
+        ]);
+
+        $bot = $this->botAs(self::USER_B);
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('server:list')->reply();
+        $bot->hearCallbackQueryData("{$panel->id}")->reply();
+        $bot->hearCallbackQueryData('71')->reply();
+
+        $body = $this->lastMessageBody($bot);
+        $this->assertStringNotContainsString('نود پاسارگارد', json_encode($body, JSON_UNESCAPED_UNICODE));
+        $this->assertStringNotContainsString('آپدیت وایرگارد', json_encode($body, JSON_UNESCAPED_UNICODE));
+    }
+
+    /**
+     * Defense-in-depth: confirmInstallNode re-checks ownership itself, not
+     * just the button visibility — covers an owner who taps the (already
+     * on-screen) node-install button right after being revoked mid-
+     * conversation, before the button had a chance to disappear.
+     */
+    public function test_confirm_install_node_denies_a_just_revoked_owner(): void
+    {
+        config(['bot.admins' => [(string) self::USER_A]]);
+
+        Queue::fake();
+
+        $panel = $this->makePanel(self::USER_A, 'A Panel');
+
+        $droplet = [
+            'id' => 73,
+            'name' => 'srv-a3',
+            'status' => 'active',
+            'region' => ['slug' => 'nyc1', 'name' => 'New York 1'],
+            'size_slug' => 's-1vcpu-1gb',
+            'image' => ['distribution' => 'Ubuntu', 'name' => '24.04 x64'],
+            'networks' => ['v4' => [['ip_address' => '9.9.9.3', 'type' => 'public']]],
+        ];
+
+        ServerSecret::create([
+            'panel_id' => $panel->id,
+            'provider_server_id' => 73,
+            'root_password' => 'already-known-password',
+        ]);
+
+        Http::fake([
+            'api.digitalocean.com/v2/droplets?*' => Http::response(['droplets' => [$droplet], 'links' => [], 'meta' => ['total' => 1]]),
+            'api.digitalocean.com/v2/droplets/73' => Http::response(['droplet' => $droplet]),
+            'api.digitalocean.com/v2/reserved_ips*' => Http::response(['reserved_ips' => []]),
+        ]);
+
+        $bot = $this->botAs(self::USER_A);
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('server:list')->reply();
+        $bot->hearCallbackQueryData("{$panel->id}")->reply();
+        $bot->hearCallbackQueryData('73')->reply(); // node-install button is rendered here, still an owner
+
+        config(['bot.admins' => []]); // revoked before the tap actually lands
+
+        $bot->hearCallbackQueryData('x@@@@@@@')->reply(); // 8th x-prefixed button = confirmInstallNode
+
+        Queue::assertNotPushed(InstallPasarguardNodeJob::class);
     }
 
     public function test_owner_can_grant_access_via_the_user_management_menu(): void

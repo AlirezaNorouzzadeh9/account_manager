@@ -6,6 +6,7 @@ use App\Jobs\InstallPasarguardNodeJob;
 use App\Jobs\PollProviderActionJob;
 use App\Jobs\ServerPingCheckJob;
 use App\Jobs\UpdateWireguardsJob;
+use App\Models\BotUser;
 use App\Models\Panel;
 use App\Models\ServerSecret;
 use App\Models\WireguardProfile;
@@ -236,11 +237,13 @@ class ServerListMenu extends InlineMenu
             InlineKeyboardButton::make('📡 پینگ از ایران', callback_data: 'x@checkPing'),
         ], perRow: 3);
 
-        // VPN node management
-        $this->addButtonGrid([
-            InlineKeyboardButton::make('🧩 نود پاسارگارد', callback_data: 'x@confirmInstallNode'),
-            InlineKeyboardButton::make('🔄 آپدیت وایرگارد', callback_data: 'x@updateWireguards'),
-        ]);
+        // VPN node management — owner-only, see BotUser::isOwner().
+        if (BotUser::isOwner($this->ownerId)) {
+            $this->addButtonGrid([
+                InlineKeyboardButton::make('🧩 نود پاسارگارد', callback_data: 'x@confirmInstallNode'),
+                InlineKeyboardButton::make('🔄 آپدیت وایرگارد', callback_data: 'x@updateWireguards'),
+            ]);
+        }
 
         // "تغییر سرور" builds a fresh server with the same specs (+ same
         // node/WireGuard profile if any) and auto-deletes this one once it's
@@ -538,8 +541,28 @@ class ServerListMenu extends InlineMenu
         $this->addButtonRow(InlineKeyboardButton::make('🚫 بدون وایرگارد', callback_data: "none@{$callback}"));
     }
 
+    /**
+     * Same owner-only check as the button visibility in renderServerDetail()
+     * — guards against a granted user replaying a crafted callback_data
+     * string for a button they were never shown.
+     */
+    protected function requireOwner(): bool
+    {
+        if (BotUser::isOwner($this->ownerId)) {
+            return true;
+        }
+
+        $this->setCallbackQueryOptions(['text' => 'این قابلیت فقط برای مدیر ربات فعال است.', 'show_alert' => true]);
+
+        return false;
+    }
+
     public function confirmInstallNode(Nutgram $bot): void
     {
+        if (! $this->requireOwner()) {
+            return;
+        }
+
         $this->clearButtons();
         $this->menuText(
             "🧩 این کار داکر را (در صورت نبود) روی سرور نصب می‌کند و یک نود پاسارگارد بالا می‌آورد.\n".
@@ -552,6 +575,10 @@ class ServerListMenu extends InlineMenu
 
     public function chooseInstallProfile(Nutgram $bot, string $data): void
     {
+        if (! $this->requireOwner()) {
+            return;
+        }
+
         $this->pendingProfile = $data;
 
         $hasSecret = ServerSecret::where('panel_id', $this->panelId)
@@ -587,6 +614,10 @@ class ServerListMenu extends InlineMenu
 
     public function installNode(Nutgram $bot): void
     {
+        if (! $this->requireOwner()) {
+            return;
+        }
+
         ServerSecret::where('panel_id', $this->panelId)
             ->where('provider_server_id', $this->serverId)
             ->update(['wireguard_profile_id' => $this->pendingProfile === 'none' ? null : (int) $this->pendingProfile]);
@@ -599,6 +630,10 @@ class ServerListMenu extends InlineMenu
 
     public function updateWireguards(Nutgram $bot): void
     {
+        if (! $this->requireOwner()) {
+            return;
+        }
+
         $this->clearButtons();
         $this->menuText('کدام پروفایل وایرگارد (هویت این سرور) روی آن فعال شود؟');
         $this->addProfileButtons('chooseUpdateProfile');
@@ -608,6 +643,10 @@ class ServerListMenu extends InlineMenu
 
     public function chooseUpdateProfile(Nutgram $bot, string $data): void
     {
+        if (! $this->requireOwner()) {
+            return;
+        }
+
         $hasSecret = ServerSecret::where('panel_id', $this->panelId)
             ->where('provider_server_id', $this->serverId)
             ->exists();

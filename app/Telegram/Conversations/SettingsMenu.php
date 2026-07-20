@@ -22,18 +22,20 @@ class SettingsMenu extends InlineMenu
         $isOwner = BotUser::isOwner($bot->userId());
 
         $this->clearButtons();
-        $this->menuText($this->rtl(
-            "⚙️ تنظیمات\n\n".
-            "🔒 مدیریت وایرگاردها — لوکیشن‌های وایرگارد سرورها\n".
-            "🪪 پروفایل‌ها — مدیریت پروفایل‌های وایرگارد (PrivateKey هر سرور)\n".
-            ($isOwner ? "👥 مدیریت کاربران — دادن دسترسی ربات به کاربران دیگر\n" : '')."\n".
-            'یکی از گزینه‌های زیر را انتخاب کنید:'
-        ));
-        $this->addButtonRow(InlineKeyboardButton::make('🔒 مدیریت وایرگاردها', callback_data: 'x@wireguard'));
-        $this->addButtonRow(InlineKeyboardButton::make('🪪 پروفایل‌ها', callback_data: 'x@profiles'));
 
         if ($isOwner) {
+            $this->menuText($this->rtl(
+                "⚙️ تنظیمات\n\n".
+                "🔒 مدیریت وایرگاردها — لوکیشن‌های وایرگارد سرورها\n".
+                "🪪 پروفایل‌ها — مدیریت پروفایل‌های وایرگارد (PrivateKey هر سرور)\n".
+                "👥 مدیریت کاربران — دادن دسترسی ربات به کاربران دیگر\n\n".
+                'یکی از گزینه‌های زیر را انتخاب کنید:'
+            ));
+            $this->addButtonRow(InlineKeyboardButton::make('🔒 مدیریت وایرگاردها', callback_data: 'x@wireguard'));
+            $this->addButtonRow(InlineKeyboardButton::make('🪪 پروفایل‌ها', callback_data: 'x@profiles'));
             $this->addButtonRow(InlineKeyboardButton::make('👥 مدیریت کاربران', callback_data: 'x@users'));
+        } else {
+            $this->menuText($this->rtl("⚙️ تنظیمات\n\nاین بخش فقط برای مدیر ربات در دسترس است."));
         }
 
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت به منوی اصلی', callback_data: 'x@cancel'));

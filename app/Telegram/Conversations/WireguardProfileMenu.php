@@ -2,6 +2,7 @@
 
 namespace App\Telegram\Conversations;
 
+use App\Models\BotUser;
 use App\Models\WireguardProfile;
 use App\Telegram\Support\EditsInPlace;
 use App\Telegram\Support\FormatsRtlText;
@@ -11,9 +12,10 @@ use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 
 /**
- * Manages WireGuard "profiles" — a name + PrivateKey identity picked per
- * server when installing/updating WireGuard, so different servers can
- * present different client identities to the same set of WireguardLocations.
+ * Owner-only (see BotUser::isOwner()): manages WireGuard "profiles" — a
+ * name + PrivateKey identity picked per server when installing/updating
+ * WireGuard, so different servers can present different client identities
+ * to the same set of WireguardLocations.
  */
 class WireguardProfileMenu extends InlineMenu
 {
@@ -30,6 +32,13 @@ class WireguardProfileMenu extends InlineMenu
     {
         $this->ownerId = $bot->userId();
         $this->editInPlaceFromCallback($bot);
+
+        if (! BotUser::isOwner($this->ownerId)) {
+            $this->closeMenu('⛔️ این بخش فقط برای مدیر ربات است.');
+            $this->end();
+
+            return;
+        }
 
         if ($focusProfileId !== null) {
             $this->showProfile($bot, (string) $focusProfileId, $justCreated);
