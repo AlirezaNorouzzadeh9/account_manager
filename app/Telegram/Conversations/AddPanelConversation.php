@@ -24,6 +24,11 @@ class AddPanelConversation extends InlineMenu
     protected ?string $clientSecret = null;
     protected ?string $subscriptionId = null;
     protected ?string $subscriptionName = null;
+    protected ?string $ovhApplicationKey = null;
+    protected ?string $ovhApplicationSecret = null;
+    protected ?string $ovhConsumerKey = null;
+    protected ?string $ovhServiceName = null;
+    protected ?string $ovhProjectName = null;
 
     public function start(Nutgram $bot): void
     {
@@ -91,6 +96,17 @@ class AddPanelConversation extends InlineMenu
             return;
         }
 
+        if (Provider::from($this->provider) === Provider::Ovh) {
+            $bot->sendMessage(
+                "برای OVH باید از https://eu.api.ovh.com/createApp/ یک Application (Key+Secret) بسازید، سپس یک Consumer Key تأییدشده برایش بگیرید (مرحله تأیید در مرورگر انجام می‌شود، خارج از این ربات).\n\n".
+                'Application Key را ارسال کنید:',
+                reply_markup: $this->backButton()
+            );
+            $this->next('receiveOvhApplicationKey');
+
+            return;
+        }
+
         $tokenUrl = match (Provider::from($this->provider)) {
             Provider::Linode => 'https://cloud.linode.com/profile/tokens',
             Provider::Vultr => 'https://my.vultr.com/settings/#settingsapi',
@@ -106,7 +122,7 @@ class AddPanelConversation extends InlineMenu
         $this->next('receiveToken');
     }
 
-    protected function receiveAzureField(Nutgram $bot, string $prompt): ?string
+    protected function receiveCredentialField(Nutgram $bot, string $prompt): ?string
     {
         if ($this->backTapped($bot)) {
             $this->end();
@@ -128,7 +144,7 @@ class AddPanelConversation extends InlineMenu
 
     public function receiveTenantId(Nutgram $bot): void
     {
-        $value = $this->receiveAzureField($bot, 'دوباره Tenant ID را بفرستید:');
+        $value = $this->receiveCredentialField($bot, 'دوباره Tenant ID را بفرستید:');
 
         if ($value === null) {
             return;
@@ -141,7 +157,7 @@ class AddPanelConversation extends InlineMenu
 
     public function receiveClientId(Nutgram $bot): void
     {
-        $value = $this->receiveAzureField($bot, 'دوباره Client ID را بفرستید:');
+        $value = $this->receiveCredentialField($bot, 'دوباره Client ID را بفرستید:');
 
         if ($value === null) {
             return;
@@ -154,7 +170,7 @@ class AddPanelConversation extends InlineMenu
 
     public function receiveClientSecret(Nutgram $bot): void
     {
-        $value = $this->receiveAzureField($bot, 'دوباره Client Secret را بفرستید:');
+        $value = $this->receiveCredentialField($bot, 'دوباره Client Secret را بفرستید:');
 
         if ($value === null) {
             return;
@@ -167,7 +183,7 @@ class AddPanelConversation extends InlineMenu
 
     public function receiveSubscriptionId(Nutgram $bot): void
     {
-        $value = $this->receiveAzureField($bot, 'دوباره Subscription ID را بفرستید:');
+        $value = $this->receiveCredentialField($bot, 'دوباره Subscription ID را بفرستید:');
 
         if ($value === null) {
             return;
@@ -204,7 +220,7 @@ class AddPanelConversation extends InlineMenu
 
     public function receiveResourceGroup(Nutgram $bot): void
     {
-        $value = $this->receiveAzureField($bot, 'دوباره نام Resource Group را بفرستید:');
+        $value = $this->receiveCredentialField($bot, 'دوباره نام Resource Group را بفرستید:');
 
         if ($value === null) {
             return;
@@ -221,6 +237,100 @@ class AddPanelConversation extends InlineMenu
                 'client_id' => $this->clientId,
                 'subscription_id' => $this->subscriptionId,
                 'resource_group' => $value,
+            ],
+            'is_active' => true,
+            'created_by' => $bot->userId(),
+        ]);
+
+        try {
+            $bot->deleteMessage($bot->chatId(), $bot->messageId());
+        } catch (\Throwable) {
+        }
+
+        $this->end();
+        PanelsMenu::begin($bot, $bot->userId(), $bot->chatId(), [$panel->id, true]);
+    }
+
+    public function receiveOvhApplicationKey(Nutgram $bot): void
+    {
+        $value = $this->receiveCredentialField($bot, 'دوباره Application Key را بفرستید:');
+
+        if ($value === null) {
+            return;
+        }
+
+        $this->ovhApplicationKey = $value;
+        $bot->sendMessage('Application Secret را ارسال کنید:', reply_markup: $this->backButton());
+        $this->next('receiveOvhApplicationSecret');
+    }
+
+    public function receiveOvhApplicationSecret(Nutgram $bot): void
+    {
+        $value = $this->receiveCredentialField($bot, 'دوباره Application Secret را بفرستید:');
+
+        if ($value === null) {
+            return;
+        }
+
+        $this->ovhApplicationSecret = $value;
+        $bot->sendMessage('Consumer Key تأییدشده را ارسال کنید:', reply_markup: $this->backButton());
+        $this->next('receiveOvhConsumerKey');
+    }
+
+    public function receiveOvhConsumerKey(Nutgram $bot): void
+    {
+        $value = $this->receiveCredentialField($bot, 'دوباره Consumer Key را بفرستید:');
+
+        if ($value === null) {
+            return;
+        }
+
+        $this->ovhConsumerKey = $value;
+        $bot->sendMessage(
+            'نام Cloud Project (Service Name) را ارسال کنید (از https://www.ovh.com/manager/#/public-cloud):',
+            reply_markup: $this->backButton()
+        );
+        $this->next('receiveOvhServiceName');
+    }
+
+    public function receiveOvhServiceName(Nutgram $bot): void
+    {
+        $value = $this->receiveCredentialField($bot, 'دوباره نام Cloud Project را بفرستید:');
+
+        if ($value === null) {
+            return;
+        }
+
+        $this->ovhServiceName = $value;
+
+        try {
+            $account = ProviderManager::make(Provider::Ovh, $this->ovhConsumerKey, [
+                'application_key' => $this->ovhApplicationKey,
+                'application_secret' => $this->ovhApplicationSecret,
+                'service_name' => $this->ovhServiceName,
+            ])->account();
+            $this->ovhProjectName = $account['email'] ?? $this->ovhServiceName;
+        } catch (ProviderException $e) {
+            $this->ovhApplicationKey = $this->ovhApplicationSecret = $this->ovhConsumerKey = $this->ovhServiceName = $this->ovhProjectName = null;
+            $bot->sendMessage(
+                "اطلاعات وارد شده معتبر نیست:\n{$e->getMessage()}\nدوباره از Application Key شروع کنید:",
+                reply_markup: $this->backButton()
+            );
+            $this->next('receiveOvhApplicationKey');
+
+            return;
+        }
+
+        $panel = Panel::create([
+            'name' => $this->name,
+            'provider' => Provider::Ovh,
+            'api_token' => $this->ovhConsumerKey,
+            'meta' => [
+                'email' => $this->ovhProjectName,
+                'uuid' => $this->ovhServiceName,
+                'application_key' => $this->ovhApplicationKey,
+                'application_secret' => $this->ovhApplicationSecret,
+                'service_name' => $this->ovhServiceName,
             ],
             'is_active' => true,
             'created_by' => $bot->userId(),

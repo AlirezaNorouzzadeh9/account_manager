@@ -8,6 +8,7 @@ enum Provider: string
     case Vultr = 'vultr';
     case Linode = 'linode';
     case Azure = 'azure';
+    case Ovh = 'ovh';
 
     public function label(): string
     {
@@ -16,6 +17,7 @@ enum Provider: string
             self::Vultr => 'Vultr',
             self::Linode => 'Linode',
             self::Azure => 'Azure',
+            self::Ovh => 'OVH',
         };
     }
 
@@ -25,7 +27,7 @@ enum Provider: string
     public function isAvailable(): bool
     {
         return match ($this) {
-            self::DigitalOcean, self::Linode, self::Vultr, self::Azure => true,
+            self::DigitalOcean, self::Linode, self::Vultr, self::Azure, self::Ovh => true,
             default => false,
         };
     }

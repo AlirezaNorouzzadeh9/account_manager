@@ -7,6 +7,7 @@ use App\Models\Panel;
 use App\Services\Providers\Azure\AzureClient;
 use App\Services\Providers\DigitalOcean\DigitalOceanClient;
 use App\Services\Providers\Linode\LinodeClient;
+use App\Services\Providers\Ovh\OvhClient;
 use App\Services\Providers\Vultr\VultrClient;
 
 class ProviderManager
@@ -19,6 +20,7 @@ class ProviderManager
         'linode' => LinodeClient::class,
         'vultr' => VultrClient::class,
         'azure' => AzureClient::class,
+        'ovh' => OvhClient::class,
     ];
 
     public static function forPanel(Panel $panel): ProviderClient
@@ -27,9 +29,12 @@ class ProviderManager
     }
 
     /**
-     * $extra carries the non-secret credentials every provider except Azure
-     * ignores (tenant_id/client_id/subscription_id/resource_group) — stored
-     * in Panel::$meta since Azure's auth needs more than one bearer token.
+     * $extra carries the non-secret credentials every simple-bearer-token
+     * provider ignores — stored in Panel::$meta since Azure/OVH's auth needs
+     * more than one secret:
+     * Azure: tenant_id/client_id/subscription_id/resource_group.
+     * OVH: application_key/application_secret/service_name ($apiToken is
+     * the Consumer Key, OVH's actual account-level, revocable secret).
      */
     public static function make(Provider $provider, string $apiToken, array $extra = []): ProviderClient
     {
@@ -46,6 +51,15 @@ class ProviderManager
                 $extra['client_id'] ?? '',
                 $extra['subscription_id'] ?? '',
                 $extra['resource_group'] ?? '',
+            );
+        }
+
+        if ($provider === Provider::Ovh) {
+            return new $class(
+                $apiToken,
+                $extra['application_key'] ?? '',
+                $extra['application_secret'] ?? '',
+                $extra['service_name'] ?? '',
             );
         }
 
