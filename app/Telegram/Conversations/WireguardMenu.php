@@ -91,6 +91,7 @@ class WireguardMenu extends InlineMenu
             : "کشور تنظیم نشده.\n";
 
         $intro = "🌍 تنظیم کشور — تنظیم نام کشور (فقط برای تشخیص خودتان)\n".
+            "📍 تنظیم آی‌پی — تغییر آی‌پی این لوکیشن\n".
             "🗑 حذف لوکیشن — حذف این لوکیشن\n".
             "🔙 بازگشت — بازگشت به لیست لوکیشن‌ها\n\n";
 
@@ -107,6 +108,7 @@ class WireguardMenu extends InlineMenu
             ['parse_mode' => 'Markdown']
         );
         $this->addButtonRow(InlineKeyboardButton::make('🌍 تنظیم کشور', callback_data: 'x@setCountry'));
+        $this->addButtonRow(InlineKeyboardButton::make('📍 تنظیم آی‌پی', callback_data: 'x@setIp'));
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف لوکیشن', callback_data: 'x@confirmDeleteLocation'));
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToList'));
         $this->showMenu();
@@ -117,6 +119,13 @@ class WireguardMenu extends InlineMenu
         $this->closeMenu();
         $this->end();
         SetWireguardLocationCountryConversation::begin($bot, $bot->userId(), $bot->chatId(), [$this->currentLocationId]);
+    }
+
+    public function setIp(Nutgram $bot): void
+    {
+        $this->closeMenu();
+        $this->end();
+        SetWireguardLocationIpConversation::begin($bot, $bot->userId(), $bot->chatId(), [$this->currentLocationId]);
     }
 
     public function backToList(Nutgram $bot): void

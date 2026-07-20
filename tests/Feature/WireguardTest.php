@@ -164,7 +164,7 @@ class WireguardTest extends TestCase
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x')->reply();
         $bot->hearCallbackQueryData((string) $location->id)->reply(); // showLocation
-        $bot->hearCallbackQueryData('x@')->reply(); // "🗑 حذف لوکیشن" (2nd x-prefixed button, after country)
+        $bot->hearCallbackQueryData('x@@')->reply(); // "🗑 حذف لوکیشن" (3rd x-prefixed button, after country + ip)
         $bot->hearCallbackQueryData('yes')->reply();
 
         $this->assertNull($location->fresh());
@@ -338,5 +338,49 @@ class WireguardTest extends TestCase
         $bot->hearText('-')->reply();
 
         $this->assertNull($profile->fresh()->own_ip);
+    }
+
+    public function test_set_location_ip_updates_it(): void
+    {
+        $location = WireguardLocation::create([
+            'name' => 'germany',
+            'ip' => '1.2.3.4',
+            'server_public_key' => 'pub',
+            'created_by' => 555,
+        ]);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply();
+        $bot->hearCallbackQueryData((string) $location->id)->reply(); // showLocation
+        $bot->hearCallbackQueryData('x@')->reply(); // "📍 تنظیم آی‌پی" (2nd x-prefixed button, after country)
+        $bot->hearText('89.249.73.213')->reply();
+
+        $this->assertSame('89.249.73.213', $location->fresh()->ip);
+    }
+
+    public function test_set_location_ip_rejects_an_invalid_ip(): void
+    {
+        $location = WireguardLocation::create([
+            'name' => 'germany',
+            'ip' => '1.2.3.4',
+            'server_public_key' => 'pub',
+            'created_by' => 555,
+        ]);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply();
+        $bot->hearCallbackQueryData((string) $location->id)->reply();
+        $bot->hearCallbackQueryData('x@')->reply(); // "📍 تنظیم آی‌پی"
+        $bot->hearText('not-an-ip')->reply();
+
+        $this->assertSame('1.2.3.4', $location->fresh()->ip);
     }
 }
