@@ -108,6 +108,7 @@ class WireguardProfileMenu extends InlineMenu
         $intro = "👁 نمایش پرایوت کی — نمایش PrivateKey این پروفایل\n".
             "🧩 تنظیم آیدی هسته — تنظیم `core_id` این پروفایل در پنل PasarGuard (برای ریست خودکار نود بعد از تغییر IP)\n".
             "📍 تنظیم آی‌پی اصلی — آی‌پی واقعی سرور این پروفایل (برای چک سلامت و برگشت خودکار دامنه بعد از قطعی)\n".
+            "🔑 ویرایش پرایوت کی — تغییر PrivateKey این پروفایل\n".
             "🗑 حذف پروفایل — حذف این پروفایل\n".
             "🔙 بازگشت — بازگشت به لیست پروفایل‌ها\n\n";
 
@@ -123,6 +124,7 @@ class WireguardProfileMenu extends InlineMenu
         $this->addButtonRow(InlineKeyboardButton::make('👁 نمایش پرایوت کی', callback_data: 'x@revealPrivateKey'));
         $this->addButtonRow(InlineKeyboardButton::make('🧩 تنظیم آیدی هسته', callback_data: 'x@setCoreId'));
         $this->addButtonRow(InlineKeyboardButton::make('📍 تنظیم آی‌پی اصلی', callback_data: 'x@setOwnIp'));
+        $this->addButtonRow(InlineKeyboardButton::make('🔑 ویرایش پرایوت کی', callback_data: 'x@setPrivateKey'));
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف پروفایل', callback_data: 'x@confirmDeleteProfile'));
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToList'));
         $this->showMenu();
@@ -140,6 +142,13 @@ class WireguardProfileMenu extends InlineMenu
         $this->closeMenu();
         $this->end();
         SetWireguardProfileOwnIpConversation::begin($bot, $bot->userId(), $bot->chatId(), [$this->currentProfileId]);
+    }
+
+    public function setPrivateKey(Nutgram $bot): void
+    {
+        $this->closeMenu();
+        $this->end();
+        SetWireguardProfilePrivateKeyConversation::begin($bot, $bot->userId(), $bot->chatId(), [$this->currentProfileId]);
     }
 
     public function revealPrivateKey(Nutgram $bot): void

@@ -230,7 +230,7 @@ class WireguardTest extends TestCase
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (direct from settings menu)
         $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
-        $bot->hearCallbackQueryData('x@@@')->reply(); // "🗑 حذف پروفایل" (4th x-prefixed button, after core_id + own ip)
+        $bot->hearCallbackQueryData('x@@@@')->reply(); // "🗑 حذف پروفایل" (5th x-prefixed button, after core_id + own ip + private key edit)
         $bot->hearCallbackQueryData('yes')->reply();
 
         $this->assertNull($profile->fresh());
@@ -338,6 +338,40 @@ class WireguardTest extends TestCase
         $bot->hearText('-')->reply();
 
         $this->assertNull($profile->fresh()->own_ip);
+    }
+
+    public function test_set_private_key_updates_the_profile(): void
+    {
+        $profile = WireguardProfile::create(['name' => 'server-main', 'private_key' => 'placeholder-key', 'created_by' => 555]);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x@')->reply(); // "🪪 پروفایل‌ها" (direct from settings menu)
+        $bot->hearCallbackQueryData((string) $profile->id)->reply(); // showProfile
+        $bot->hearCallbackQueryData('x@@@')->reply(); // "🔑 ویرایش پرایوت کی" (4th x-prefixed button)
+        $bot->hearText('a-brand-new-private-key')->reply();
+
+        $this->assertSame('a-brand-new-private-key', $profile->fresh()->private_key);
+    }
+
+    public function test_set_private_key_rejects_an_empty_value(): void
+    {
+        $profile = WireguardProfile::create(['name' => 'server-main', 'private_key' => 'placeholder-key', 'created_by' => 555]);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x@')->reply();
+        $bot->hearCallbackQueryData((string) $profile->id)->reply();
+        $bot->hearCallbackQueryData('x@@@')->reply(); // "🔑 ویرایش پرایوت کی"
+        $bot->hearText('   ')->reply();
+
+        $this->assertSame('placeholder-key', $profile->fresh()->private_key);
     }
 
     public function test_set_location_ip_updates_it(): void
