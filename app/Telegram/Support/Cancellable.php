@@ -2,6 +2,7 @@
 
 namespace App\Telegram\Support;
 
+use App\Models\BotUser;
 use App\Telegram\Handlers\StartCommand;
 use SergiX44\Nutgram\Nutgram;
 
@@ -25,11 +26,13 @@ trait Cancellable
         $this->end();
 
         if ($messageId && $chatId) {
+            $isOwner = BotUser::isOwner($bot->userId());
+
             $bot->editMessageText(
-                text: StartCommand::text(),
+                text: StartCommand::text($isOwner),
                 chat_id: $chatId,
                 message_id: $messageId,
-                reply_markup: StartCommand::keyboard(),
+                reply_markup: StartCommand::keyboard($isOwner),
             );
 
             return;

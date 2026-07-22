@@ -3,6 +3,8 @@
 namespace App\Telegram\Conversations;
 
 use App\Jobs\ConnectServerWireguardsJob;
+use App\Models\BotUser;
+use App\Models\ConnectedServer;
 use App\Models\WireguardProfile;
 use App\Telegram\Support\Cancellable;
 use App\Telegram\Support\CancellableTextStep;
@@ -13,13 +15,15 @@ use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 
 /**
- * Connects to a server the bot never provisioned itself (given a raw
- * IP/username/password), tears down every WireGuard interface already on
- * it, and rebuilds ALL saved WireguardLocations there using a chosen
- * profile's PrivateKey — the same underlying operation ServerListMenu's
- * "🔄 آپدیت وایرگارد" does for panel-provisioned servers (see
- * PasarguardNodeInstaller::updateWireguards()), just without needing a
- * Panel/ServerSecret record to look the credentials up from.
+ * Owner-only (see BotUser::isOwner()): connects to a server the bot never
+ * provisioned itself (given a raw IP/username/password), tears down every
+ * WireGuard interface already on it, and rebuilds ALL saved
+ * WireguardLocations there using a chosen profile's PrivateKey — the same
+ * underlying operation ServerListMenu's "🔄 آپدیت وایرگارد" does for
+ * panel-provisioned servers (see PasarguardNodeInstaller::updateWireguards()).
+ * The credentials are persisted to ConnectedServer (keyed by host+owner) so
+ * a future automated re-push — e.g. once a WireguardLocation IP heals — can
+ * find and reconnect to it without asking the admin to re-type them.
  */
 class ConnectServerConversation extends InlineMenu
 {
@@ -36,6 +40,14 @@ class ConnectServerConversation extends InlineMenu
     public function start(Nutgram $bot): void
     {
         $this->editInPlaceFromCallback($bot);
+
+        if (! BotUser::isOwner($bot->userId())) {
+            $this->closeMenu('⛔️ این بخش فقط برای مدیر ربات است.');
+            $this->end();
+
+            return;
+        }
+
         $this->closeMenu('آی‌پی سرور را ارسال کنید:', ['reply_markup' => $this->backButton()]);
         $this->next('receiveHost');
     }
@@ -164,6 +176,11 @@ class ConnectServerConversation extends InlineMenu
 
             return;
         }
+
+        ConnectedServer::updateOrCreate(
+            ['host' => $this->host, 'created_by' => $bot->userId()],
+            ['username' => $this->username, 'password' => $this->password, 'wireguard_profile_id' => $profile->id]
+        );
 
         ConnectServerWireguardsJob::dispatch(
             $this->host,

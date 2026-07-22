@@ -9,6 +9,7 @@ use App\Models\WireguardLocation;
 use App\Models\WireguardProfile;
 use App\Jobs\InstallPasarguardNodeJob;
 use App\Telegram\Conversations\AddBotUserConversation;
+use App\Telegram\Conversations\ConnectServerConversation;
 use App\Telegram\Conversations\UserManagementMenu;
 use App\Telegram\Conversations\WireguardMenu;
 use App\Telegram\Conversations\WireguardProfileMenu;
@@ -456,6 +457,39 @@ class MultiTenantIsolationTest extends TestCase
         $bot->hearCallbackQueryData('x@@@@@@@')->reply(); // 8th x-prefixed button = confirmInstallNode
 
         Queue::assertNotPushed(InstallPasarguardNodeJob::class);
+    }
+
+    public function test_non_owner_does_not_see_the_connect_server_button(): void
+    {
+        config(['bot.admins' => [(string) self::USER_A]]);
+        BotUser::create(['telegram_id' => self::USER_B, 'label' => 'Friend', 'added_by' => self::USER_A]);
+
+        $bot = $this->botAs(self::USER_B);
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+
+        $body = $this->lastMessageBody($bot);
+        $this->assertStringNotContainsString('اتصال به سرور', json_encode($body, JSON_UNESCAPED_UNICODE));
+    }
+
+    /**
+     * Defense-in-depth: even if ConnectServerConversation were ever reached
+     * some other way than tapping the (owner-only, never-rendered-to-B)
+     * main-menu button, it re-checks ownership itself at the top of start().
+     */
+    public function test_connect_server_conversation_denies_a_non_owner_even_called_directly(): void
+    {
+        config(['bot.admins' => [(string) self::USER_A]]);
+        BotUser::create(['telegram_id' => self::USER_B, 'label' => 'Friend', 'added_by' => self::USER_A]);
+
+        $bot = $this->botAs(self::USER_B);
+        $bot->willStartConversation();
+        $bot->hearText('/start')->reply();
+        ConnectServerConversation::begin($bot);
+
+        $body = $this->lastMessageBody($bot);
+        $this->assertStringContainsString('فقط برای مدیر ربات', $body['text']);
     }
 
     public function test_owner_can_grant_access_via_the_user_management_menu(): void

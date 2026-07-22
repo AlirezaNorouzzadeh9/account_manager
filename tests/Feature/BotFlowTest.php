@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\ConnectServerWireguardsJob;
 use App\Jobs\CreateServerReadyJob;
+use App\Models\ConnectedServer;
 use App\Models\Panel;
 use App\Models\WireguardProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -220,6 +221,46 @@ class BotFlowTest extends TestCase
                 && $this->privateProp($job, 'password') === 'super-secret-pass'
                 && $this->privateProp($job, 'wireguardPrivateKey') === 'fake-private-key';
         });
+
+        $connected = ConnectedServer::where('host', '203.0.113.10')->first();
+        $this->assertNotNull($connected);
+        $this->assertSame('root', $connected->username);
+        $this->assertSame('super-secret-pass', $connected->password);
+        $this->assertSame($profile->id, $connected->wireguard_profile_id);
+        $this->assertSame(555, $connected->created_by);
+    }
+
+    public function test_connect_server_conversation_upserts_by_host_on_reconnect(): void
+    {
+        Queue::fake();
+
+        $profileA = WireguardProfile::create(['name' => 'germany', 'private_key' => 'key-a', 'created_by' => 555]);
+        $profileB = WireguardProfile::create(['name' => 'france', 'private_key' => 'key-b', 'created_by' => 555]);
+
+        ConnectedServer::create([
+            'host' => '203.0.113.20',
+            'username' => 'root',
+            'password' => 'old-pass',
+            'wireguard_profile_id' => $profileA->id,
+            'created_by' => 555,
+        ]);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('server:connect')->reply();
+        $bot->hearText('203.0.113.20')->reply();
+        $bot->hearText('root')->reply();
+        $bot->hearText('new-pass')->reply();
+        $bot->hearCallbackQueryData("{$profileB->id}")->reply();
+        $bot->hearCallbackQueryData('yes')->reply();
+
+        $this->assertSame(1, ConnectedServer::where('host', '203.0.113.20')->count());
+
+        $connected = ConnectedServer::where('host', '203.0.113.20')->first();
+        $this->assertSame('new-pass', $connected->password);
+        $this->assertSame($profileB->id, $connected->wireguard_profile_id);
     }
 
     public function test_connect_server_conversation_rejects_invalid_ip(): void
