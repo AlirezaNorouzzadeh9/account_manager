@@ -46,9 +46,9 @@ class PasarguardNodeInstaller
     public const NODE_API_PORT = 62051;
 
     // Shared by every WireGuard location's [Interface]/[Peer] — only
-    // ip/server_public_key (per WireguardLocation) and PrivateKey (per
-    // WireguardProfile, chosen per server) actually vary.
-    protected const WG_ADDRESS = '10.14.0.2/16';
+    // Address (see locationAddress()), ip/server_public_key (per
+    // WireguardLocation), and PrivateKey (per WireguardProfile, chosen per
+    // server) actually vary.
     protected const WG_DNS = '162.252.172.57, 149.154.159.92';
     protected const WG_ALLOWED_IPS = '0.0.0.0/0';
     protected const WG_PORT = 51820;
@@ -280,7 +280,7 @@ YAML;
     {
         return implode("\n", [
             '[Interface]',
-            'Address = '.self::WG_ADDRESS,
+            'Address = '.$this->locationAddress($location),
             "PrivateKey = {$privateKey}",
             'DNS = '.self::WG_DNS,
             'Table = '.self::WG_TABLE,
@@ -290,6 +290,25 @@ YAML;
             'AllowedIPs = '.self::WG_ALLOWED_IPS,
             "Endpoint = {$location->ip}:".self::WG_PORT,
         ]);
+    }
+
+    /**
+     * Every WireGuard-enabled server brings up ALL saved locations as
+     * simultaneous interfaces (see updateWireguards()) — they used to all
+     * share the exact same fixed Address (10.14.0.2/16), which the kernel's
+     * local-address table can only really attribute to one interface at a
+     * time. That caused real, confirmed-in-production intermittent
+     * connectivity (an interface's own traffic would randomly get delivered
+     * to a DIFFERENT location's interface). Deriving a distinct /24 per
+     * location's own id — stable and collision-free without needing a new
+     * column — fixes it: 10.14.{1..250}.2, cycling only if there are ever
+     * more than 250 locations, which is far beyond any realistic count.
+     */
+    protected function locationAddress(WireguardLocation $location): string
+    {
+        $octet = ($location->id % 250) + 1;
+
+        return "10.14.{$octet}.2/24";
     }
 
     /**

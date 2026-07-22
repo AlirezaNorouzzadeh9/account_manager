@@ -375,7 +375,7 @@ class PasarguardNodeTest extends TestCase
 
     public function test_location_config_uses_fixed_defaults_and_the_given_private_key(): void
     {
-        $location = new WireguardLocation([
+        $location = WireguardLocation::create([
             'name' => 'germany',
             'ip' => '212.102.54.131',
             'server_public_key' => 'vIMHzH5FHdVkrhOOc0u/FySVhumaLC3XUk39Wk34LnE=',
@@ -388,13 +388,40 @@ class PasarguardNodeTest extends TestCase
 
         $config = $method->invoke($installer, $location, 'fake-private-key');
 
-        $this->assertStringContainsString('Address = 10.14.0.2/16', $config);
+        $expectedOctet = ($location->id % 250) + 1;
+        $this->assertStringContainsString("Address = 10.14.{$expectedOctet}.2/24", $config);
         $this->assertStringContainsString('PrivateKey = fake-private-key', $config);
         $this->assertStringContainsString('DNS = 162.252.172.57, 149.154.159.92', $config);
         $this->assertStringContainsString('Table = off', $config);
         $this->assertStringContainsString('PublicKey = vIMHzH5FHdVkrhOOc0u/FySVhumaLC3XUk39Wk34LnE=', $config);
         $this->assertStringContainsString('AllowedIPs = 0.0.0.0/0', $config);
         $this->assertStringContainsString('Endpoint = 212.102.54.131:51820', $config);
+    }
+
+    /**
+     * Regression test for a real production incident: every location used
+     * to share the exact same fixed Address (10.14.0.2/16), so bringing up
+     * more than one location's interface on the same server (which is the
+     * normal case — every server runs ALL saved locations at once) caused
+     * the kernel to randomly misdeliver traffic between interfaces.
+     */
+    public function test_each_locations_config_gets_a_distinct_non_overlapping_address(): void
+    {
+        $a = WireguardLocation::create(['name' => 'loc-a', 'ip' => '1.1.1.1', 'server_public_key' => 'pub-a']);
+        $b = WireguardLocation::create(['name' => 'loc-b', 'ip' => '2.2.2.2', 'server_public_key' => 'pub-b']);
+
+        $installer = new PasarguardNodeInstaller();
+        $ref = new \ReflectionClass($installer);
+        $method = $ref->getMethod('buildLocationConfig');
+        $method->setAccessible(true);
+
+        $configA = $method->invoke($installer, $a, 'key-a');
+        $configB = $method->invoke($installer, $b, 'key-b');
+
+        preg_match('/Address = (\S+)/', $configA, $matchA);
+        preg_match('/Address = (\S+)/', $configB, $matchB);
+
+        $this->assertNotSame($matchA[1], $matchB[1]);
     }
 
     public function test_dns_configured_requires_both_zone_id_and_api_token(): void
