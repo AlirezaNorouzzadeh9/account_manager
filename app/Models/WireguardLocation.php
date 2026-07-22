@@ -10,8 +10,14 @@ class WireguardLocation extends Model
         'name',
         'country',
         'ip',
+        'hostname',
+        'ping_alerted',
         'server_public_key',
         'created_by',
+    ];
+
+    protected $casts = [
+        'ping_alerted' => 'boolean',
     ];
 
     /** Every location belongs to exactly one Telegram user — no sharing between users. */

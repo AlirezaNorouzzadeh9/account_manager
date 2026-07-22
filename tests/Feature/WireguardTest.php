@@ -164,7 +164,7 @@ class WireguardTest extends TestCase
         $bot->hearCallbackQueryData('settings:menu')->reply();
         $bot->hearCallbackQueryData('x')->reply();
         $bot->hearCallbackQueryData((string) $location->id)->reply(); // showLocation
-        $bot->hearCallbackQueryData('x@@')->reply(); // "🗑 حذف لوکیشن" (3rd x-prefixed button, after country + ip)
+        $bot->hearCallbackQueryData('x@@@')->reply(); // "🗑 حذف لوکیشن" (4th x-prefixed button, after country + ip + hostname)
         $bot->hearCallbackQueryData('yes')->reply();
 
         $this->assertNull($location->fresh());
@@ -416,5 +416,72 @@ class WireguardTest extends TestCase
         $bot->hearText('not-an-ip')->reply();
 
         $this->assertSame('1.2.3.4', $location->fresh()->ip);
+    }
+
+    public function test_set_location_hostname_updates_it(): void
+    {
+        $location = WireguardLocation::create([
+            'name' => 'germany',
+            'ip' => '1.2.3.4',
+            'server_public_key' => 'pub',
+            'created_by' => 555,
+        ]);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply();
+        $bot->hearCallbackQueryData((string) $location->id)->reply(); // showLocation
+        $bot->hearCallbackQueryData('x@@')->reply(); // "🌐 تنظیم دامنه" (3rd x-prefixed button, after country + ip)
+        $bot->hearText('de.example.com')->reply();
+
+        $this->assertSame('de.example.com', $location->fresh()->hostname);
+    }
+
+    public function test_set_location_hostname_rejects_an_invalid_value(): void
+    {
+        $location = WireguardLocation::create([
+            'name' => 'germany',
+            'ip' => '1.2.3.4',
+            'server_public_key' => 'pub',
+            'created_by' => 555,
+        ]);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply();
+        $bot->hearCallbackQueryData((string) $location->id)->reply();
+        $bot->hearCallbackQueryData('x@@')->reply(); // "🌐 تنظیم دامنه"
+        $bot->hearText('not a domain')->reply();
+
+        $this->assertNull($location->fresh()->hostname);
+    }
+
+    public function test_sending_dash_clears_the_locations_hostname(): void
+    {
+        $location = WireguardLocation::create([
+            'name' => 'germany',
+            'ip' => '1.2.3.4',
+            'server_public_key' => 'pub',
+            'hostname' => 'de.example.com',
+            'created_by' => 555,
+        ]);
+
+        $bot = $this->bot();
+        $bot->willStartConversation();
+
+        $bot->hearText('/start')->reply();
+        $bot->hearCallbackQueryData('settings:menu')->reply();
+        $bot->hearCallbackQueryData('x')->reply();
+        $bot->hearCallbackQueryData((string) $location->id)->reply();
+        $bot->hearCallbackQueryData('x@@')->reply(); // "🌐 تنظیم دامنه"
+        $bot->hearText('-')->reply();
+
+        $this->assertNull($location->fresh()->hostname);
     }
 }

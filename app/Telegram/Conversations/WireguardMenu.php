@@ -99,8 +99,13 @@ class WireguardMenu extends InlineMenu
             ? "کشور: {$location->flag()} `{$location->country}`\n"
             : "کشور تنظیم نشده.\n";
 
+        $hostnameLine = $location->hostname
+            ? "دامنه: `{$location->hostname}`\n"
+            : "دامنه تنظیم نشده — با ثبت آن، سلامت این لوکیشن خودکار چک و در صورت قطعی آی‌پی جدید جایگزین می‌شود.\n";
+
         $intro = "🌍 تنظیم کشور — تنظیم نام کشور (فقط برای تشخیص خودتان)\n".
             "📍 تنظیم آی‌پی — تغییر آی‌پی این لوکیشن\n".
+            "🌐 تنظیم دامنه — دامنه‌ای که آی‌پی از آن گرفته می‌شود (برای ترمیم خودکار)\n".
             "🗑 حذف لوکیشن — حذف این لوکیشن\n".
             "🔙 بازگشت — بازگشت به لیست لوکیشن‌ها\n\n";
 
@@ -112,12 +117,14 @@ class WireguardMenu extends InlineMenu
                 "نام: `{$location->name}`\n".
                 $countryLine.
                 "آی‌پی: `{$location->ip}`\n".
+                $hostnameLine.
                 "PublicKey سرور: `{$location->server_public_key}`"
             ),
             ['parse_mode' => 'Markdown']
         );
         $this->addButtonRow(InlineKeyboardButton::make('🌍 تنظیم کشور', callback_data: 'x@setCountry'));
         $this->addButtonRow(InlineKeyboardButton::make('📍 تنظیم آی‌پی', callback_data: 'x@setIp'));
+        $this->addButtonRow(InlineKeyboardButton::make('🌐 تنظیم دامنه', callback_data: 'x@setHostname'));
         $this->addButtonRow(InlineKeyboardButton::make('🗑 حذف لوکیشن', callback_data: 'x@confirmDeleteLocation'));
         $this->addButtonRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'x@backToList'));
         $this->showMenu();
@@ -135,6 +142,13 @@ class WireguardMenu extends InlineMenu
         $this->closeMenu();
         $this->end();
         SetWireguardLocationIpConversation::begin($bot, $bot->userId(), $bot->chatId(), [$this->currentLocationId]);
+    }
+
+    public function setHostname(Nutgram $bot): void
+    {
+        $this->closeMenu();
+        $this->end();
+        SetWireguardLocationHostnameConversation::begin($bot, $bot->userId(), $bot->chatId(), [$this->currentLocationId]);
     }
 
     public function backToList(Nutgram $bot): void
