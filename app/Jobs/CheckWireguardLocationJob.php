@@ -2,11 +2,9 @@
 
 namespace App\Jobs;
 
-use App\Models\ConnectedServer;
-use App\Models\ServerSecret;
 use App\Models\WireguardLocation;
 use App\Services\CheckHost\CheckHostClient;
-use App\Services\Dns\DnsResolver;
+use App\Services\Wireguard\LocationHealer;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -16,23 +14,21 @@ use Throwable;
 
 /**
  * Health check for one WireGuard location (see wireguard:check-locations,
- * run every 3 minutes): a location's "ip" is often just one of several IPs
- * a rotating "hostname" subdomain hands out, so unlike a genuinely dead
- * server, a bad ip here can usually be fixed by re-resolving the subdomain
- * for a fresh one — no admin action needed.
+ * run every 3 minutes): pings the location's ip from Iran via check-host.net
+ * — a different signal than CheckWireguardTunnelsJob's local tunnel probe,
+ * catching an endpoint that's unreachable specifically from Iran even while
+ * the tunnel itself still comes up fine.
  *
  * Only runs for locations that HAVE a hostname set (WireguardMenu's
  * "🌐 تنظیم دامنه" is optional) — same "nothing to check yet" skip as
  * CheckWireguardProfileJob does for a profile with no own_ip.
  *
- * On a real failure that re-resolves to a NEW ip, the location is updated
- * and every one of this owner's WireGuard-enabled servers — both
- * panel-provisioned (ServerSecret) and manually-connected (ConnectedServer)
- * — gets pushed a fresh config via UpdateWireguardsJob/
- * ConnectServerWireguardsJob, so the fix actually reaches running servers
- * instead of just the database. Alerts once per ongoing problem via
- * WireguardLocation::ping_alerted, same pattern as
- * ServerSecret::ping_alerted/WireguardProfile::ping_alerted.
+ * On a real failure, hands off to LocationHealer to re-resolve the hostname
+ * and push the fix to every affected server. Alerts once per ongoing
+ * problem via WireguardLocation::ping_alerted, same pattern as
+ * ServerSecret::ping_alerted/WireguardProfile::ping_alerted — shared with
+ * CheckWireguardTunnelsJob so the two checks don't double-alert the same
+ * underlying problem.
  */
 class CheckWireguardLocationJob implements ShouldQueue
 {
@@ -46,7 +42,7 @@ class CheckWireguardLocationJob implements ShouldQueue
     {
     }
 
-    public function handle(CheckHostClient $checkHost, DnsResolver $dns, Nutgram $bot): void
+    public function handle(CheckHostClient $checkHost, LocationHealer $healer, Nutgram $bot): void
     {
         $location = WireguardLocation::find($this->locationId);
 
@@ -89,18 +85,14 @@ class CheckWireguardLocationJob implements ShouldQueue
             return;
         }
 
-        $newIp = $dns->resolve($location->hostname);
+        $oldIp = $location->ip;
+        $newIp = $healer->heal($location);
 
-        if ($newIp && $newIp !== $location->ip) {
-            $oldIp = $location->ip;
-            $location->update(['ip' => $newIp, 'ping_alerted' => false]);
-
+        if ($newIp) {
             $bot->sendMessage(
                 "🔁 آی‌پی لوکیشن «{$location->name}» چون از ایران در دسترس نبود، از {$oldIp} به {$newIp} تغییر کرد؛ در حال بروزرسانی سرورهای فعال...",
                 chat_id: $location->created_by,
             );
-
-            $this->pushToAffectedServers($location, $bot);
 
             return;
         }
@@ -111,44 +103,6 @@ class CheckWireguardLocationJob implements ShouldQueue
                 "⚠️ لوکیشن «{$location->name}» ({$location->ip}) از ایران در دسترس نیست و ترمیم خودکار ممکن نشد ".
                 "(دامنه‌اش «{$location->hostname}» یا resolve نشد یا هنوز همون IP قبلی را می‌دهد). دستی بررسی کنید.",
                 chat_id: $location->created_by,
-            );
-        }
-    }
-
-    /**
-     * Every WireGuard-enabled server of this location's owner gets a fresh
-     * config pushed — panel-provisioned ones via UpdateWireguardsJob (looked
-     * up through ServerSecret/Panel), manually-connected ones via
-     * ConnectServerWireguardsJob (looked up through ConnectedServer, which
-     * only exists because ConnectServerConversation now persists its
-     * credentials).
-     */
-    protected function pushToAffectedServers(WireguardLocation $location, Nutgram $bot): void
-    {
-        $panelServers = ServerSecret::whereNotNull('wireguard_profile_id')
-            ->whereHas('panel', fn ($query) => $query->where('created_by', $location->created_by))
-            ->get();
-
-        foreach ($panelServers as $secret) {
-            UpdateWireguardsJob::dispatch($secret->panel_id, $secret->provider_server_id, $location->created_by);
-        }
-
-        $connectedServers = ConnectedServer::ownedBy($location->created_by)
-            ->whereNotNull('wireguard_profile_id')
-            ->get();
-
-        foreach ($connectedServers as $connected) {
-            if (! $connected->wireguardProfile) {
-                continue;
-            }
-
-            ConnectServerWireguardsJob::dispatch(
-                $connected->host,
-                $connected->username,
-                $connected->password,
-                $connected->wireguardProfile->private_key,
-                $location->created_by,
-                $location->created_by,
             );
         }
     }

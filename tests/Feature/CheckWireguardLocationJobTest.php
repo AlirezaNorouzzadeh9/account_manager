@@ -12,6 +12,7 @@ use App\Models\WireguardLocation;
 use App\Models\WireguardProfile;
 use App\Services\CheckHost\CheckHostClient;
 use App\Services\Dns\DnsResolver;
+use App\Services\Wireguard\LocationHealer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -67,7 +68,7 @@ class CheckWireguardLocationJobTest extends TestCase
         /** @var FakeNutgram $bot */
         $bot = $this->app->make(Nutgram::class);
 
-        (new CheckWireguardLocationJob($location->id))->handle(new CheckHostClient(), $this->fakeDns([]), $bot);
+        (new CheckWireguardLocationJob($location->id))->handle(new CheckHostClient(), new LocationHealer($this->fakeDns([])), $bot);
 
         Http::assertNothingSent();
         $this->assertEmpty($bot->getRequestHistory());
@@ -81,7 +82,7 @@ class CheckWireguardLocationJobTest extends TestCase
         /** @var FakeNutgram $bot */
         $bot = $this->app->make(Nutgram::class);
 
-        (new CheckWireguardLocationJob($location->id))->handle(new CheckHostClient(), $this->fakeDns([]), $bot);
+        (new CheckWireguardLocationJob($location->id))->handle(new CheckHostClient(), new LocationHealer($this->fakeDns([])), $bot);
 
         $this->assertEmpty($bot->getRequestHistory());
         $this->assertFalse($location->fresh()->ping_alerted);
@@ -95,7 +96,7 @@ class CheckWireguardLocationJobTest extends TestCase
         /** @var FakeNutgram $bot */
         $bot = $this->app->make(Nutgram::class);
 
-        (new CheckWireguardLocationJob($location->id))->handle(new CheckHostClient(), $this->fakeDns([]), $bot);
+        (new CheckWireguardLocationJob($location->id))->handle(new CheckHostClient(), new LocationHealer($this->fakeDns([])), $bot);
 
         $this->assertFalse($location->fresh()->ping_alerted);
         $this->assertNotEmpty($bot->getRequestHistory());
@@ -126,7 +127,7 @@ class CheckWireguardLocationJobTest extends TestCase
         $bot = $this->app->make(Nutgram::class);
 
         (new CheckWireguardLocationJob($location->id))
-            ->handle(new CheckHostClient(), $this->fakeDns(['de.example.com' => '5.6.7.8']), $bot);
+            ->handle(new CheckHostClient(), new LocationHealer($this->fakeDns(['de.example.com' => '5.6.7.8'])), $bot);
 
         $this->assertSame('5.6.7.8', $location->fresh()->ip);
         $this->assertFalse($location->fresh()->ping_alerted);
@@ -153,7 +154,7 @@ class CheckWireguardLocationJobTest extends TestCase
         $this->fakePing(ok: false);
 
         (new CheckWireguardLocationJob($location->id))
-            ->handle(new CheckHostClient(), $this->fakeDns(['de.example.com' => $location->ip]), $this->app->make(Nutgram::class));
+            ->handle(new CheckHostClient(), new LocationHealer($this->fakeDns(['de.example.com' => $location->ip])), $this->app->make(Nutgram::class));
 
         $this->assertSame('1.2.3.4', $location->fresh()->ip);
         $this->assertTrue($location->fresh()->ping_alerted);
@@ -170,7 +171,7 @@ class CheckWireguardLocationJobTest extends TestCase
         /** @var FakeNutgram $bot */
         $bot = $this->app->make(Nutgram::class);
 
-        (new CheckWireguardLocationJob($location->id))->handle(new CheckHostClient(), $this->fakeDns([]), $bot);
+        (new CheckWireguardLocationJob($location->id))->handle(new CheckHostClient(), new LocationHealer($this->fakeDns([])), $bot);
 
         $this->assertSame('1.2.3.4', $location->fresh()->ip);
         $this->assertTrue($location->fresh()->ping_alerted);
@@ -186,7 +187,7 @@ class CheckWireguardLocationJobTest extends TestCase
         /** @var FakeNutgram $bot */
         $bot = $this->app->make(Nutgram::class);
 
-        (new CheckWireguardLocationJob($location->id))->handle(new CheckHostClient(), $this->fakeDns([]), $bot);
+        (new CheckWireguardLocationJob($location->id))->handle(new CheckHostClient(), new LocationHealer($this->fakeDns([])), $bot);
 
         $this->assertEmpty($bot->getRequestHistory());
         $this->assertTrue($location->fresh()->ping_alerted);
