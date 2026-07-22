@@ -19,15 +19,14 @@ use SergiX44\Nutgram\Nutgram;
  *
  * Reproduces the admin's own diagnostic one-liner: for every `wg show
  * interfaces` interface (named after its WireguardLocation), curl out
- * through it and see whether it actually reaches the internet. This is a
- * stronger signal than CheckWireguardLocationJob's Iran-only ping — it
- * catches a tunnel that's up but not actually passing traffic, regardless
- * of where the checker is.
+ * through it and see whether it actually reaches the internet. This is the
+ * ONLY signal allowed to trigger LocationHealer — an Iran-only ping
+ * failure doesn't prove the tunnel is actually down, only that it's
+ * unreachable from Iran specifically, so it must never drive an ip change.
  *
- * On a dead interface, hands off to LocationHealer (same one
- * CheckWireguardLocationJob uses) to re-resolve and push the fix — so the
- * two checks share one alert flag (WireguardLocation::ping_alerted) and
- * never double-notify the same underlying problem.
+ * On a dead interface, hands off to LocationHealer to re-resolve and push
+ * the fix, alerting once per ongoing problem via
+ * WireguardLocation::ping_alerted.
  */
 class CheckWireguardTunnelsJob implements ShouldQueue
 {

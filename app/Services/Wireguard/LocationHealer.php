@@ -10,11 +10,16 @@ use App\Models\WireguardLocation;
 use App\Services\Dns\DnsResolver;
 
 /**
- * Shared "fix a bad location ip" logic used by every WireGuard-location
- * health check (Iran ping via CheckWireguardLocationJob, local tunnel probe
- * via CheckWireguardTunnelsJob, possibly more later) — a location's ip is
- * often just one of several IPs a rotating "hostname" subdomain hands out,
- * so re-resolving it usually recovers a bad one without any admin action.
+ * "Fix a bad location ip" logic used by CheckWireguardTunnelsJob — a
+ * location's ip is often just one of several IPs a rotating "hostname"
+ * subdomain hands out, so re-resolving it usually recovers a bad one
+ * without any admin action.
+ *
+ * Deliberately only ever invoked from a LOCAL tunnel-liveness signal, never
+ * from an Iran ping — an Iran-only ping failure doesn't mean the tunnel is
+ * actually down. An earlier Iran-ping-based check (CheckWireguardLocationJob)
+ * called this too and was removed after it swapped a location's ip based on
+ * nothing but a flaky Iran ping.
  */
 class LocationHealer
 {

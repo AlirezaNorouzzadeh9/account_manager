@@ -11,8 +11,8 @@ use SergiX44\Nutgram\Nutgram;
 /**
  * Sets a WireGuard location's "hostname" — the rotating subdomain its `ip`
  * was originally picked from. Optional: leaving it unset just means
- * CheckWireguardLocationJob has nothing to re-resolve and skips this
- * location, same as a WireguardProfile with no own_ip.
+ * LocationHealer (see CheckWireguardTunnelsJob) has nothing to re-resolve
+ * and skips this location, same as a WireguardProfile with no own_ip.
  */
 class SetWireguardLocationHostnameConversation extends Conversation
 {
